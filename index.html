@@ -1,0 +1,245 @@
+<!-- =========================================================
+TPV TIENDA LOCAL — UI (PARTE 1/3)
+Archivo: index.html
+- Pantalla TPV + Modal Productos
+- IVA incluido en precios (solo texto informativo)
+========================================================== -->
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TPV Tienda — Local</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">TPV</div>
+      <div class="brandText">
+        <div class="brandTitle">TPV TIENDA — LOCAL</div>
+        <div class="brandSub">Precios con IVA incluido</div>
+      </div>
+    </div>
+
+    <div class="topActions">
+      <button id="btnProducts" class="btn">Productos</button>
+      <button id="btnLock" class="btn btnGhost">Bloquear</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: QUICK / FAVORITES -->
+    <section class="panel panelLeft">
+      <div class="panelHeader">
+        <h2>Productos más usados</h2>
+        <div class="hint">Configurable (admin) — por ahora demo</div>
+      </div>
+
+      <div id="favGrid" class="favGrid"></div>
+
+      <div class="panelDivider"></div>
+
+      <div class="panelHeader">
+        <h2>Venta rápida (importe)</h2>
+        <div class="hint">Añade una línea manual sin producto</div>
+      </div>
+
+      <div class="quickAmount">
+        <div class="row">
+          <input id="quickName" class="input" placeholder="Nombre opcional (ej: Varios)" maxlength="40" />
+        </div>
+        <div class="row">
+          <input id="quickAmount" class="input inputBig" inputmode="decimal" placeholder="0,00" />
+          <button id="btnAddQuick" class="btn btnPrimary">Añadir</button>
+        </div>
+        <div class="pad">
+          <button class="padBtn" data-add="1">+1</button>
+          <button class="padBtn" data-add="2">+2</button>
+          <button class="padBtn" data-add="5">+5</button>
+          <button class="padBtn" data-add="10">+10</button>
+          <button class="padBtn" data-add="20">+20</button>
+          <button class="padBtn" data-add="50">+50</button>
+          <button class="padBtn" data-set="0">C</button>
+          <button class="padBtn" data-back="1">⌫</button>
+          <button class="padBtn" data-exact="1">Exacto</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CENTER: CART -->
+    <section class="panel panelCenter">
+      <div class="panelHeader cartHeader">
+        <div>
+          <h2>TPV</h2>
+          <div class="hint">Escanea o escribe barcode (Enter) — o busca por nombre</div>
+        </div>
+        <div class="cartHeaderRight">
+          <button id="btnClearCart" class="btn btnDangerGhost">Vaciar</button>
+        </div>
+      </div>
+
+      <div class="scanRow">
+        <input id="scanInput" class="input inputBig" placeholder="Escanear / escribir barcode / buscar..." autocomplete="off" />
+        <button id="btnAddByScan" class="btn">Añadir</button>
+      </div>
+
+      <div id="searchResults" class="searchResults hidden"></div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:44%">Producto</th>
+              <th style="width:18%">Cant.</th>
+              <th style="width:18%">Precio</th>
+              <th style="width:20%">Total</th>
+              <th style="width:0%"></th>
+            </tr>
+          </thead>
+          <tbody id="cartBody"></tbody>
+        </table>
+      </div>
+
+      <div class="cartFooter">
+        <div class="totals">
+          <div class="totLine"><span>Subtotal</span><strong id="tSubtotal">0,00 €</strong></div>
+          <div class="totLine small"><span>IVA</span><span>Incluido en precios</span></div>
+          <div class="totLine grand"><span>TOTAL</span><strong id="tTotal">0,00 €</strong></div>
+        </div>
+
+        <div class="payBox">
+          <div class="payRow">
+            <button id="payCash" class="btn btnPrimary">Cobrar efectivo</button>
+            <button id="payCard" class="btn">Tarjeta</button>
+          </div>
+
+          <div class="payRow">
+            <input id="cashReceived" class="input" inputmode="decimal" placeholder="Entregado (efectivo) 0,00" />
+            <div class="change">
+              <div class="changeLabel">Cambio</div>
+              <div id="changeDue" class="changeValue">0,00 €</div>
+            </div>
+          </div>
+
+          <div class="payRow">
+            <input id="custName" class="input" placeholder="Nombre opcional (ticket)" maxlength="60" />
+          </div>
+          <div class="payRow">
+            <input id="custEmail" class="input" placeholder="Email opcional (enviar ticket)" maxlength="120" />
+          </div>
+
+          <div class="payRow payRowEnd">
+            <label class="check">
+              <input id="chkEmail" type="checkbox" />
+              <span>Enviar ticket por correo</span>
+            </label>
+
+            <button id="btnFinish" class="btn btnGood">Finalizar (guardar ticket)</button>
+          </div>
+
+          <div class="hint tiny">
+            * En esta Parte 1 guardamos “ticket” en memoria demo.  
+            En Parte 3 se guarda en SQLite y se imprime ESC/POS.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: LAST TICKET -->
+    <section class="panel panelRight">
+      <div class="panelHeader">
+        <h2>Último ticket</h2>
+        <div class="hint">Vista rápida (demo)</div>
+      </div>
+
+      <div class="ticketCard">
+        <div class="ticketMeta">
+          <div><span class="muted">Nº</span> <strong id="lastTicketNo">—</strong></div>
+          <div><span class="muted">Fecha</span> <strong id="lastTicketDate">—</strong></div>
+        </div>
+        <pre id="lastTicketPreview" class="ticketPreview">Sin tickets todavía.</pre>
+
+        <div class="ticketActions">
+          <button id="btnReprint" class="btn btnGhost">Reimprimir (demo)</button>
+          <button id="btnResend" class="btn btnGhost">Reenviar email (demo)</button>
+        </div>
+      </div>
+
+      <div class="panelDivider"></div>
+
+      <div class="panelHeader">
+        <h2>Atajos</h2>
+        <div class="hint">Rápido como TPV real</div>
+      </div>
+
+      <ul class="shortcuts">
+        <li><kbd>Enter</kbd> en el campo barcode → Añadir</li>
+        <li><kbd>Esc</kbd> → cerrar búsqueda</li>
+        <li><kbd>Ctrl</kbd> + <kbd>L</kbd> → enfocar barcode</li>
+      </ul>
+    </section>
+  </main>
+
+  <!-- MODAL: PRODUCTS -->
+  <div id="modalProducts" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modalBox">
+      <div class="modalHeader">
+        <div>
+          <div class="modalTitle">Productos</div>
+          <div class="hint">Alta con orden: Barcode → Nombre → Precio venta → Precio compra (opcional)</div>
+        </div>
+        <button id="btnCloseProducts" class="btn btnGhost">Cerrar</button>
+      </div>
+
+      <div class="modalBody">
+        <div class="grid2">
+          <div class="card">
+            <div class="cardTitle">Nuevo producto</div>
+
+            <label class="lbl">Barcode</label>
+            <input id="pBarcode" class="input" placeholder="Escanea o escribe barcode" />
+
+            <label class="lbl">Nombre</label>
+            <input id="pName" class="input" placeholder="Nombre producto" />
+
+            <div class="row2">
+              <div>
+                <label class="lbl">Precio venta (IVA incl.)</label>
+                <input id="pSell" class="input" inputmode="decimal" placeholder="0,00" />
+              </div>
+              <div>
+                <label class="lbl">Precio compra (opcional)</label>
+                <input id="pBuy" class="input" inputmode="decimal" placeholder="0,00" />
+              </div>
+            </div>
+
+            <div class="rowEnd">
+              <button id="btnSaveProduct" class="btn btnPrimary">Guardar</button>
+              <button id="btnClearProductForm" class="btn btnGhost">Limpiar</button>
+            </div>
+
+            <div class="hint tiny">* En Parte 3 se guarda en SQLite. Ahora es demo en memoria.</div>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Buscar</div>
+            <input id="pSearch" class="input" placeholder="Buscar por nombre o barcode..." />
+            <div id="pList" class="plist"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modalFooter">
+        <div class="hint tiny">
+          Admin (PIN/contraseña) se implementa en Parte 2/3 con sesión y bloqueo.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
