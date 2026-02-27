@@ -1,36 +1,25 @@
-✅ **PARTE 3/3 — `app.js` (COMPLETO)**
-Incluye TODO lo pedido: **escaneo permanente instantáneo**, **categorías (crear/renombrar/asignar)**, **cobro PRO (billetes + teclado + cambio)**, **impresión ON/OFF (si OFF no abre impresión)**, **Cierre Z (imprime Z + descuadre ± + archiva día + limpia ventas abiertas)**, **reportes por rango**, **export/import/backup**, **aparcados**, **About plegable + copiar info**, **footer crédito**, **PIN admin**.
-
-> Pega este archivo como `app.js` junto a `index.html` y `styles.css` en la misma carpeta (o `/docs`).
-
-```js
 /* =========================
-TPV NADEEM LOCUTORIO — B/W PRO (PAQUETE PRO+)
+TPV NADEEM LOCUTORIO — B/W PRO (PAQUETE PRO)
 Archivo: app.js
 
-Incluye:
-- Escucha permanente de barcode (global buffer rápido)
-- Categorías: crear/renombrar/borrar + asignar a productos
-- Venta: categorías bajo barcode/buscar + grid por categoría
-- Cobro PRO:
-  - Botones billetes/monedas (suman entregado)
-  - Teclado numérico para entregado
-  - Cambio en grande, rojo/verde
-  - Cobrar / Cobrar sin imprimir
-- Impresión ON/OFF:
-  - Si OFF, nunca abre window.print
+- Escucha permanente de escaneo (barcode) + Enter o timeout rápido
+- Categorías: crear/renombrar/borrar (Admin) + asignación por producto
+- Venta: categorías debajo de barcode/buscar + grid productos por categoría
+- Cobro PRO en panel derecho:
+  - botones billetes + exacto + limpiar
+  - teclado numérico (modal) para “Entregado”
+  - cambio SIEMPRE visible (sin flash / sin ocultar a los 3s)
+- Impresión ON/OFF: si OFF no se llama a window.print()
 - Cierre Z:
-  - Muestra esperado (efectivo/tarjeta/total/tickets)
-  - Introduces contado y calcula descuadre +/-
-  - Imprimir Z o Cerrar día (archiva día + limpia ventas abiertas)
-- Reportes:
-  - Hoy (abierto), Ayer, Semana, Mes, Personalizado
-  - Tabla tickets filtrada + KPIs + beneficio (si hay coste)
-- Backup/Restore JSON + import/export CSV
-- Aparcados múltiples
-- About plegable + copiar info
-- PIN Admin + autolock por inactividad
-
+  - calcula esperado (efectivo/tarjeta/mixto)
+  - introduces contado -> descuadre +/- (se muestra en vivo)
+  - imprime Z (si impresión ON)
+  - cierra día: guarda en reportes y LIMPIA ventas abiertas
+- Reportes: hoy/ayer/semana/mes/personalizado con tabla + top productos
+- Export: productos CSV, ventas CSV, cierres Z CSV
+- Backup/Restore JSON
+- Seguridad: login local (cajero/admin) + PIN admin (hash) + auto-lock admin por inactividad
+- Crédito: footer + Ajustes→About plegable + botón “Copiar info”
 ========================= */
 
 (() => {
@@ -39,102 +28,92 @@ Incluye:
   /* =========================
      HELPERS
   ========================== */
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
-  const LS_KEY = 'TPV_NADEEM_LOCUTORIO_V1_3';
+  const LS_KEY = 'TPV_NADEEM_LOCUTORIO_PRO_V1';
 
   const pad = (n) => (n < 10 ? '0' : '') + n;
-
-  const now = () => new Date();
-
-  const dateKeyLocal = (d = new Date()) => {
-    const y = d.getFullYear();
-    const m = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    return `${y}-${m}-${day}`; // YYYY-MM-DD
-  };
-
-  const nowEs = (d = new Date()) => {
-    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const todayKey = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD (UTC-ish). OK para día.
+  const nowEs = () => {
+    const d = new Date();
+    return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   const parseMoney = (s) => {
     if (s == null) return 0;
-    const t = String(s).trim().replace(/\s/g, '').replace(',', '.');
+    const t = String(s).trim().replace(/\s/g,'').replace(',', '.');
     const v = Number(t);
     return Number.isFinite(v) ? v : 0;
   };
-
-  const fmtMoney = (v) => Number(v || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtMoney = (v) => Number(v||0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtEUR = (v) => `${fmtMoney(v)} €`;
 
   const escapeHtml = (s) => (s ?? '').toString()
-    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+    .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+    .replaceAll('"','&quot;').replaceAll("'","&#039;");
 
-  const uid = () => 'ID' + Math.random().toString(36).slice(2, 8).toUpperCase() + Date.now().toString(36).slice(-4).toUpperCase();
+  const uid = () => 'ID' + Math.random().toString(36).slice(2,8).toUpperCase() + Date.now().toString(36).slice(-4).toUpperCase();
 
-  const debounce = (fn, ms = 120) => {
-    let t = null;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
-    };
+  const debounce = (fn, ms=120) => {
+    let t=null;
+    return (...args) => { clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
   };
 
-  async function sha256Hex(str) {
+  async function sha256Hex(str){
     const enc = new TextEncoder();
     const data = enc.encode(String(str));
     const hash = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
   }
 
-  function downloadText(filename, text, mime = 'text/plain') {
+  function downloadText(filename, text, mime='text/plain'){
     const blob = new Blob([text], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
+    a.href = url; a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   }
 
-  function toCSV(rows) {
+  function toCSV(rows){
     const esc = (v) => {
       const s = String(v ?? '');
-      if (/[",\n;]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+      if (/[",\n;]/.test(s)) return `"${s.replaceAll('"','""')}"`;
       return s;
     };
     return rows.map(r => r.map(esc).join(',')).join('\n');
   }
 
-  function parseCSV(text) {
-    const raw = String(text || '').replace(/\r/g, '').trim();
+  function parseCSV(text){
+    const raw = String(text || '').replace(/\r/g,'').trim();
     if (!raw) return [];
-    const commaCount = (raw.match(/,/g) || []).length;
-    const semiCount = (raw.match(/;/g) || []).length;
+    const commaCount = (raw.match(/,/g)||[]).length;
+    const semiCount  = (raw.match(/;/g)||[]).length;
     const delim = semiCount > commaCount ? ';' : ',';
     const lines = raw.split('\n');
-    return lines.filter(l => l.trim()).map(l => splitCSVLine(l, delim));
+    const out = [];
+    for (const line of lines){
+      if (!line.trim()) continue;
+      out.push(splitCSVLine(line, delim));
+    }
+    return out;
   }
 
-  function splitCSVLine(line, delim) {
+  function splitCSVLine(line, delim){
     const out = [];
     let cur = '';
     let inQ = false;
-    for (let i = 0; i < line.length; i++) {
+    for (let i=0;i<line.length;i++){
       const ch = line[i];
-      if (ch === '"') {
-        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      if (ch === '"'){
+        if (inQ && line[i+1] === '"'){ cur += '"'; i++; }
         else inQ = !inQ;
-      } else if (!inQ && ch === delim) {
-        out.push(cur); cur = '';
-      } else {
-        cur += ch;
-      }
+      } else if (!inQ && ch === delim){
+        out.push(cur); cur='';
+      } else cur += ch;
     }
     out.push(cur);
     return out.map(s => s.trim());
@@ -145,31 +124,27 @@ Incluye:
   ========================== */
   const DEFAULTS = () => {
     const cat = (id, name) => ({ id, name });
+
     return {
-      version: '1.3',
+      version: 'pro-1.0',
       settings: {
         shopName: 'MALIK AHMAD NADEEM',
         shopSub: 'C/ Vitoria 139 · 09007 Burgos · Tlf 632 480 316 · CIF 72374062P',
         footerText: 'Gracias por su compra',
         boxName: 'CAJA-1',
-
         theme: 'day',
 
-        // Impresión
-        printOn: true,
+        // impresión
+        printEnabled: true,
         autoPrint: false,
-        printZOnClose: true,
 
-        // Cobro rápido
-        directPay: false,
-
-        // Scanner
+        // escáner
         alwaysScan: true,
-        scanSpeedMs: 35, // umbral entre teclas para identificar lector
+        scanSpeedMs: 35, // 30–45 recomendado
 
-        // Seguridad
-        adminPinHash: '', // default 1234
-        autoLockMin: 10,
+        // seguridad
+        adminPinHash: '', // default 1234 (hash)
+        autoLockMin: 10,  // minutos para bloquear admin por inactividad
       },
 
       session: {
@@ -178,68 +153,80 @@ Incluye:
         lastActivity: Date.now(),
       },
 
+      // login local demo
       users: [
-        { username: 'cajero', passHash: '', role: 'cashier' },
-        { username: 'admin', passHash: '', role: 'admin' },
+        { username:'cajero', passHash:'', role:'cashier' },
+        { username:'admin',  passHash:'', role:'admin'   },
       ],
 
       categories: [
         cat('c_all', 'Todos'),
         cat('c_fav', 'Favoritos'),
-        cat('c_loc', 'Locutorio'),
-        cat('c_sn', 'Snacks'),
-        cat('c_beb', 'Bebidas'),
+        cat('c_fr', 'Fruta'),
+        cat('c_ve', 'Verdura'),
+        cat('c_tr', 'Tropical'),
         cat('c_ot', 'Otros'),
       ],
 
-      counters: { ticketSeq: 1 },
-
       products: [
-        { id: 'P1', barcode: '1234567890123', name: 'Recarga 10€', price: 10.00, cost: null, categoryId: 'c_loc', fav: true, unit: 'ud' },
-        { id: 'P2', barcode: '2345678901234', name: 'Recarga 20€', price: 20.00, cost: null, categoryId: 'c_loc', fav: true, unit: 'ud' },
-        { id: 'P3', barcode: '3456789012345', name: 'Agua',        price: 1.00,  cost: 0.45, categoryId: 'c_beb', fav: true, unit: 'ud' },
-        { id: 'P4', barcode: '4567890123456', name: 'Coca-Cola',   price: 1.50,  cost: 0.70, categoryId: 'c_beb', fav: true, unit: 'ud' },
-        { id: 'P5', barcode: '5678901234567', name: 'Patatas',     price: 1.20,  cost: 0.55, categoryId: 'c_sn',  fav: true, unit: 'ud' },
-        { id: 'P6', barcode: '',              name: 'Bolsa',       price: 0.10,  cost: null, categoryId: 'c_ot',  fav: true, unit: 'ud' },
+        { id:'P1', barcode:'1234567890123', name:'Plátano',  price:1.89, cost:1.20, categoryId:'c_fr', fav:true, unit:'ud' },
+        { id:'P2', barcode:'7894561230123', name:'Manzana',  price:2.40, cost:1.50, categoryId:'c_fr', fav:true, unit:'ud' },
+        { id:'P3', barcode:'2345678901234', name:'Naranja',  price:1.60, cost:0.95, categoryId:'c_fr', fav:true, unit:'ud' },
+        { id:'P4', barcode:'3456789012345', name:'Tomate',   price:2.10, cost:1.25, categoryId:'c_ve', fav:true, unit:'ud' },
+        { id:'P5', barcode:'4567890123456', name:'Lechuga',  price:1.20, cost:0.70, categoryId:'c_ve', fav:true, unit:'ud' },
+        { id:'P6', barcode:'5678901234567', name:'Aguacate', price:3.90, cost:2.30, categoryId:'c_tr', fav:true, unit:'ud' },
+        { id:'P7', barcode:'',              name:'Bolsa',    price:0.10, cost:null, categoryId:'c_ot', fav:true, unit:'ud' },
       ],
 
-      carts: {
-        active: { lines: [], noteName: '', payMethod: 'efectivo', given: 0 },
-        parked: [], // [{id,name,cart,ts}]
+      ui: {
+        selectedCategoryId: 'c_all',
       },
 
-      // Ventas abiertas del día (se limpian al Cierre Z)
-      openSales: [], // [{...sale, dayKey}]
+      counters: {
+        ticketSeq: 1,
+      },
 
-      // Días cerrados (histórico)
-      closedDays: [
-        // { dayKey, closedAt, z: {...}, sales: [...] }
-      ],
+      // Ticket en curso
+      cart: {
+        lines: [],
+        payMethod: 'efectivo',
+        given: 0,
+        noteName: '',
+      },
 
-      // Último ticket
+      // Aparcados
+      parked: [], // [{id,name,cart,ts}]
+
+      // Día abierto (ventas operativas)
+      openDayKey: todayKey(),
+      openSales: [], // ventas del día (abierto)
+
+      // Reportes por día cerrado: [{ dayKey, sales, z, totals, ts }]
+      dayReports: [],
+
+      // Historial cierres Z (para export rápido)
+      zClosures: [],
+
+      // Última venta (reimpresión)
       lastSaleId: null,
 
       audit: [],
-
-      ui: {
-        selectedCategoryId: 'c_all'
-      }
     };
   };
 
-  function deepMerge(base, patch) {
+  function deepMerge(base, patch){
     if (Array.isArray(base)) return Array.isArray(patch) ? patch : base;
     if (typeof base !== 'object' || base === null) return patch ?? base;
     const out = { ...base };
     if (typeof patch !== 'object' || patch === null) return out;
-    for (const k of Object.keys(patch)) {
+    for (const k of Object.keys(patch)){
       out[k] = (k in base) ? deepMerge(base[k], patch[k]) : patch[k];
     }
     return out;
   }
 
   let state = (() => {
-    try {
+    try{
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return DEFAULTS();
       return deepMerge(DEFAULTS(), JSON.parse(raw));
@@ -259,18 +246,10 @@ Incluye:
 
     btnTheme: $('#btnTheme'),
     themeLabel: $('#themeLabel'),
-
-    btnPrintToggle: $('#btnPrintToggle'),
-    printDot: $('#printDot'),
-    printLabel: $('#printLabel'),
-
     btnLogin: $('#btnLogin'),
     userLabel: $('#userLabel'),
-
     btnAdmin: $('#btnAdmin'),
     adminState: $('#adminState'),
-
-    scanDot: $('#scanDot'),
 
     barcodeInput: $('#barcodeInput'),
     searchInput: $('#searchInput'),
@@ -299,49 +278,25 @@ Incluye:
     noteName: $('#noteName'),
 
     payTabs: $$('.pay-tab'),
+    billButtons: $$('.bill'),
+
     btnVoid: $('#btnVoid'),
     btnRefund: $('#btnRefund'),
     btnPay: $('#btnPay'),
     btnPrint: $('#btnPrint'),
-    btnEmailTicket: $('#btnEmailTicket'),
     btnLastTicket: $('#btnLastTicket'),
+    btnEmailTicket: $('#btnEmailTicket'),
+
+    btnPrintToggle: $('#btnPrintToggle'),
+    printState: $('#printState'),
 
     btnQuickAmount: $('#btnQuickAmount'),
     btnPark: $('#btnPark'),
     parkBadge: $('#parkBadge'),
 
-    // reportes
-    repPreset: $('#repPreset'),
-    repFrom: $('#repFrom'),
-    repTo: $('#repTo'),
-    statTickets: $('#statTickets'),
-    statTotal: $('#statTotal'),
-    statCash: $('#statCash'),
-    statCard: $('#statCard'),
-    statProfit: $('#statProfit'),
-    salesTable: $('#salesTable'),
-    zInfo: $('#zInfo'),
-    btnExportSalesCsv: $('#btnExportSalesCsv'),
-    btnCloseZ: $('#btnCloseZ'),
+    btnOpenZ: $('#btnOpenZ'),
 
-    // ajustes
-    btnAdminUnlock: $('#btnAdminUnlock'),
-    setShopName: $('#setShopName'),
-    setShopSub: $('#setShopSub'),
-    setBoxName: $('#setBoxName'),
-    setFooterText: $('#setFooterText'),
-    setDirectPay: $('#setDirectPay'),
-    setPrintOn: $('#setPrintOn'),
-    setAutoPrint: $('#setAutoPrint'),
-    setPrintZ: $('#setPrintZ'),
-    setAlwaysScan: $('#setAlwaysScan'),
-    setScanSpeed: $('#setScanSpeed'),
-    setAdminPin: $('#setAdminPin'),
-    setAutoLockMin: $('#setAutoLockMin'),
-    btnCopyAbout: $('#btnCopyAbout'),
-    aboutVer: $('#aboutVer'),
-
-    // products page controls
+    // Productos
     btnAddProduct: $('#btnAddProduct'),
     btnImportCsv: $('#btnImportCsv'),
     btnExportCsv: $('#btnExportCsv'),
@@ -352,17 +307,52 @@ Incluye:
     prodSearchCat: $('#prodSearchCat'),
     productsTable: $('#productsTable'),
 
-    // hidden files
+    // Reportes
+    repPreset: $('#repPreset'),
+    repFrom: $('#repFrom'),
+    repTo: $('#repTo'),
+
+    statTickets: $('#statTickets'),
+    statTotal: $('#statTotal'),
+    statCash: $('#statCash'),
+    statCard: $('#statCard'),
+
+    topProducts: $('#topProducts'),
+    zInfo: $('#zInfo'),
+    salesTable: $('#salesTable'),
+
+    btnExportSalesCsv: $('#btnExportSalesCsv'),
+    btnExportZCsv: $('#btnExportZCsv'),
+
+    // Ajustes
+    btnAdminUnlock: $('#btnAdminUnlock'),
+    setShopName: $('#setShopName'),
+    setShopSub: $('#setShopSub'),
+    setBoxName: $('#setBoxName'),
+    setFooterText: $('#setFooterText'),
+
+    setPrintEnabled: $('#setPrintEnabled'),
+    setAutoPrint: $('#setAutoPrint'),
+
+    setAlwaysScan: $('#setAlwaysScan'),
+    setScanSpeed: $('#setScanSpeed'),
+
+    setAdminPin: $('#setAdminPin'),
+    setAutoLockMin: $('#setAutoLockMin'),
+
+    aboutVersion: $('#aboutVersion'),
+    btnCopyAbout: $('#btnCopyAbout'),
+
+    // Files
     fileCsv: $('#fileCsv'),
     fileJson: $('#fileJson'),
 
-    // modals
+    // Modals
     backdrop: $('#backdrop'),
     closeBtns: $$('[data-close]'),
 
     modalLogin: $('#modalLogin'),
     modalAdmin: $('#modalAdmin'),
-    modalPay: $('#modalPay'),
     modalQuick: $('#modalQuick'),
     modalProduct: $('#modalProduct'),
     modalCats: $('#modalCats'),
@@ -379,30 +369,13 @@ Incluye:
     adminPin: $('#adminPin'),
     btnAdminOk: $('#btnAdminOk'),
 
-    // pay modal
-    payTotal: $('#payTotal'),
-    payChangeBig: $('#payChangeBig'),
-    payMethod: $('#payMethod'),
-    payGivenWrap: $('#payGivenWrap'),
-    payGiven: $('#payGiven'),
-    payCardOnlyWrap: $('#payCardOnlyWrap'),
-    payCardOnly: $('#payCardOnly'),
-    paySplitWrap: $('#paySplitWrap'),
-    payCash: $('#payCash'),
-    payCard: $('#payCard'),
-    payNote: $('#payNote'),
-    moneyBar: $('#moneyBar'),
-    payKeypad: $('#payKeypad'),
-    btnPayOk: $('#btnPayOk'),
-    btnPayNoPrint: $('#btnPayNoPrint'),
-
-    // quick modal
+    // quick
     quickAmount: $('#quickAmount'),
     quickName: $('#quickName'),
-    keypad: $('#keypad'),
+    keypadQuick: $('#keypadQuick'),
     btnQuickOk: $('#btnQuickOk'),
 
-    // product modal
+    // product
     prodModalTitle: $('#prodModalTitle'),
     prodBarcode: $('#prodBarcode'),
     prodName: $('#prodName'),
@@ -413,30 +386,29 @@ Incluye:
     prodUnit: $('#prodUnit'),
     btnProductSave: $('#btnProductSave'),
 
-    // categories modal
+    // categories
     newCatName: $('#newCatName'),
     btnCreateCat: $('#btnCreateCat'),
     catList: $('#catList'),
 
-    // park modal
+    // parked
     parkName: $('#parkName'),
     btnParkNow: $('#btnParkNow'),
     parkList: $('#parkList'),
 
-    // Z modal
+    // Z
     zExpected: $('#zExpected'),
     zCashCounted: $('#zCashCounted'),
-    zDiff: $('#zDiff'),
     zNote: $('#zNote'),
-    zAction: $('#zAction'),
+    zDiff: $('#zDiff'),
     btnZOk: $('#btnZOk'),
 
-    // email modal
+    // Email
     emailTo: $('#emailTo'),
     emailMsg: $('#emailMsg'),
     btnEmailSend: $('#btnEmailSend'),
 
-    // print & toast
+    // Print + toast
     printArea: $('#printArea'),
     toastHost: $('#toastHost'),
   };
@@ -444,7 +416,7 @@ Incluye:
   /* =========================
      TOAST + AUDIT + ACTIVITY
   ========================== */
-  function toast(msg) {
+  function toast(msg){
     if (!el.toastHost) return;
     const t = document.createElement('div');
     t.className = 'toast';
@@ -453,13 +425,13 @@ Incluye:
     setTimeout(() => t.remove(), 1500);
   }
 
-  function audit(type, data = {}) {
+  function audit(type, data={}){
     state.audit.push({ ts: Date.now(), at: nowEs(), user: state.session.user?.name || 'CAJERO', type, data });
     if (state.audit.length > 2000) state.audit.splice(0, state.audit.length - 2000);
     save();
   }
 
-  function touchActivity() {
+  function touchActivity(){
     state.session.lastActivity = Date.now();
     save();
   }
@@ -467,70 +439,70 @@ Incluye:
   /* =========================
      SECURITY
   ========================== */
-  function adminUnlocked() {
-    return (state.session.adminUnlockedUntil || 0) > Date.now();
-  }
-
-  function lockAdminIfExpired() {
+  function lockAdminIfExpired(){
     const mins = Math.max(1, Number(state.settings.autoLockMin || 10));
     const maxMs = mins * 60 * 1000;
     const idle = Date.now() - (state.session.lastActivity || Date.now());
     if (idle > maxMs) state.session.adminUnlockedUntil = 0;
   }
 
-  function renderAdminState() {
+  function adminUnlocked(){
     lockAdminIfExpired();
+    return (state.session.adminUnlockedUntil || 0) > Date.now();
+  }
+
+  function renderAdminState(){
     if (!el.adminState) return;
     el.adminState.textContent = adminUnlocked() ? 'Admin ✓' : 'Admin';
   }
 
-  async function ensureDefaultHashes() {
-    if (!state.settings.adminPinHash) {
+  async function ensureDefaultHashes(){
+    if (!state.settings.adminPinHash){
       state.settings.adminPinHash = await sha256Hex('1234');
     }
-    for (const u of state.users) {
+    for (const u of state.users){
       if (!u.passHash) u.passHash = await sha256Hex('1234');
     }
     save();
   }
 
-  async function verifyAdminPin(pin) {
-    const h = await sha256Hex(String(pin || '').trim());
+  async function verifyAdminPin(pin){
+    const h = await sha256Hex(String(pin||'').trim());
     return h === state.settings.adminPinHash;
   }
 
-  function unlockAdmin(minutes = 5) {
-    state.session.adminUnlockedUntil = Date.now() + minutes * 60 * 1000;
+  function unlockAdmin(minutes=5){
+    state.session.adminUnlockedUntil = Date.now() + minutes*60*1000;
     save();
     renderAdminState();
     audit('ADMIN_UNLOCK', { minutes });
   }
 
-  function requireAdminOrPrompt(next) {
+  function requireAdminOrPrompt(next){
     if (adminUnlocked()) return next();
     openModal(el.modalAdmin);
     toast('PIN admin requerido');
   }
 
-  async function login(username, password) {
-    const u = String(username || '').trim().toLowerCase();
-    const p = String(password || '');
-    if (!u || !p) return { ok: false, msg: 'Credenciales vacías' };
+  async function login(username, password){
+    const u = String(username||'').trim().toLowerCase();
+    const p = String(password||'');
+    if (!u || !p) return { ok:false, msg:'Credenciales vacías' };
     const user = state.users.find(x => x.username === u);
-    if (!user) return { ok: false, msg: 'Usuario no existe' };
+    if (!user) return { ok:false, msg:'Usuario no existe' };
     const h = await sha256Hex(p);
-    if (h !== user.passHash) return { ok: false, msg: 'Contraseña incorrecta' };
+    if (h !== user.passHash) return { ok:false, msg:'Contraseña incorrecta' };
     state.session.user = { name: u.toUpperCase(), role: user.role };
     save();
-    audit('LOGIN', { user: u, role: user.role });
+    audit('LOGIN', { user:u, role:user.role });
     renderHeader();
-    return { ok: true };
+    return { ok:true };
   }
 
   /* =========================
-     THEME / PRINT TOGGLE / TABS / MODALS
+     THEME / TABS / MODALS
   ========================== */
-  function setTheme(mode) {
+  function setTheme(mode){
     const night = mode === 'night';
     document.body.classList.toggle('theme-day', !night);
     document.body.classList.toggle('theme-night', night);
@@ -539,14 +511,7 @@ Incluye:
     save();
   }
 
-  function renderPrintToggle() {
-    const on = !!state.settings.printOn;
-    if (el.printDot) el.printDot.classList.toggle('off', !on);
-    if (el.printLabel) el.printLabel.textContent = on ? 'Impresión ON' : 'Impresión OFF';
-    if (el.setPrintOn) el.setPrintOn.value = on ? '1' : '0';
-  }
-
-  function setTab(name) {
+  function setTab(name){
     el.tabs.forEach(t => {
       const on = t.dataset.tab === name;
       t.classList.toggle('is-active', on);
@@ -556,7 +521,7 @@ Incluye:
     if (name === 'venta') focusBarcodeSoon();
   }
 
-  function openModal(dlg) {
+  function openModal(dlg){
     if (!dlg) return;
     if (el.backdrop) el.backdrop.hidden = false;
     dlg.showModal();
@@ -564,22 +529,36 @@ Incluye:
     if (f) setTimeout(() => f.focus(), 20);
   }
 
-  function closeModal(dlg) {
+  function closeModal(dlg){
     if (!dlg) return;
     dlg.close();
     if (el.backdrop) el.backdrop.hidden = true;
     focusBarcodeSoon();
   }
 
-  function focusBarcodeSoon() {
+  function focusBarcodeSoon(){
     if (!el.barcodeInput) return;
     setTimeout(() => el.barcodeInput.focus(), 25);
   }
 
   /* =========================
+     DAY MANAGEMENT (open day)
+  ========================== */
+  function ensureOpenDay(){
+    const t = todayKey();
+    if (!state.openDayKey) state.openDayKey = t;
+    // Si cambió el día y NO hay ventas abiertas, rotamos el openDayKey al día actual
+    if (state.openDayKey !== t && (!state.openSales || state.openSales.length === 0)) {
+      state.openDayKey = t;
+      save();
+    }
+    // Si cambió el día y aún hay ventas abiertas, NO tocamos (se cerrará manual con Z)
+  }
+
+  /* =========================
      CATEGORIES
   ========================== */
-  function normalizeCategories() {
+  function normalizeCategories(){
     const ensure = (id, name) => {
       if (!state.categories.some(c => c.id === id)) state.categories.unshift({ id, name });
     };
@@ -588,12 +567,12 @@ Incluye:
     save();
   }
 
-  function getCatName(id) {
+  function getCatName(id){
     return state.categories.find(c => c.id === id)?.name || '—';
   }
 
-  function createCategory(name) {
-    const n = String(name || '').trim();
+  function createCategory(name){
+    const n = String(name||'').trim();
     if (!n) return null;
     if (state.categories.some(c => c.name.toLowerCase() === n.toLowerCase())) return null;
     const id = 'c_' + uid().toLowerCase();
@@ -603,11 +582,10 @@ Incluye:
     return cat;
   }
 
-  function renameCategory(catId, newName) {
+  function renameCategory(catId, newName){
     const c = state.categories.find(x => x.id === catId);
     if (!c) return false;
-    if (catId === 'c_all' || catId === 'c_fav') return false;
-    const n = String(newName || '').trim();
+    const n = String(newName||'').trim();
     if (!n) return false;
     if (state.categories.some(x => x.id !== catId && x.name.toLowerCase() === n.toLowerCase())) return false;
     c.name = n;
@@ -615,13 +593,13 @@ Incluye:
     return true;
   }
 
-  function deleteCategory(catId) {
+  function deleteCategory(catId){
     if (catId === 'c_all' || catId === 'c_fav') return false;
     const idx = state.categories.findIndex(c => c.id === catId);
     if (idx < 0) return false;
 
     const fallback = state.categories.find(c => c.id === 'c_ot')?.id || 'c_all';
-    for (const p of state.products) {
+    for (const p of state.products){
       if (p.categoryId === catId) p.categoryId = fallback;
     }
     state.categories.splice(idx, 1);
@@ -633,34 +611,34 @@ Incluye:
   /* =========================
      PRODUCTS
   ========================== */
-  function findProductByBarcode(code) {
-    const c = String(code || '').trim();
+  function findProductByBarcode(code){
+    const c = String(code||'').trim();
     if (!c) return null;
-    return state.products.find(p => String(p.barcode || '').trim() === c) || null;
+    return state.products.find(p => String(p.barcode||'').trim() === c) || null;
   }
 
-  function addOrUpdateProduct(prod) {
-    const barcode = String(prod.barcode || '').trim();
-    if (barcode) {
-      const dup = state.products.find(p => p.id !== prod.id && String(p.barcode || '').trim() === barcode);
-      if (dup) return { ok: false, msg: 'Barcode ya existe' };
+  function addOrUpdateProduct(prod){
+    const barcode = String(prod.barcode||'').trim();
+    if (barcode){
+      const dup = state.products.find(p => p.id !== prod.id && String(p.barcode||'').trim() === barcode);
+      if (dup) return { ok:false, msg:'Barcode ya existe' };
     }
 
-    if (prod.id) {
+    if (prod.id){
       const p = state.products.find(x => x.id === prod.id);
-      if (!p) return { ok: false, msg: 'Producto no encontrado' };
+      if (!p) return { ok:false, msg:'Producto no encontrado' };
       Object.assign(p, prod);
       save();
-      return { ok: true, product: p };
+      return { ok:true, product:p };
     }
 
     const pnew = { ...prod, id: 'P-' + uid() };
     state.products.push(pnew);
     save();
-    return { ok: true, product: pnew };
+    return { ok:true, product:pnew };
   }
 
-  function deleteProduct(id) {
+  function deleteProduct(id){
     const idx = state.products.findIndex(p => p.id === id);
     if (idx < 0) return false;
     state.products.splice(idx, 1);
@@ -669,135 +647,149 @@ Incluye:
   }
 
   /* =========================
-     CART
+     CART (ticket en curso)
   ========================== */
   const cart = {
-    get active() { return state.carts.active; },
-    totals() {
-      const total = cart.active.lines.reduce((s, l) => s + (Number(l.price) * Number(l.qty || 0)), 0);
+    get lines(){ return state.cart.lines; },
+
+    totals(){
+      const total = state.cart.lines.reduce((s,l) => s + (Number(l.price) * Number(l.qty||0)), 0);
       return { total, subtotal: total };
     },
-    addProduct(p, qty = 1) {
+
+    addProduct(p, qty=1){
       if (!p) return;
       const key = p.id || p.barcode || p.name;
-      const lines = cart.active.lines;
-      const idx = lines.findIndex(l => l.key === key && !l.isManual);
-      if (idx >= 0) lines[idx].qty += qty;
-      else lines.push({
+      const idx = state.cart.lines.findIndex(l => l.key === key && !l.isManual);
+      if (idx >= 0) state.cart.lines[idx].qty += qty;
+      else state.cart.lines.push({
         key,
         productId: p.id,
         barcode: p.barcode || '',
         name: p.name,
-        price: Number(p.price || 0),
+        price: Number(p.price||0),
         cost: p.cost == null ? null : Number(p.cost),
         qty,
-        isManual: false
+        isManual:false
       });
       save();
       renderAll();
     },
-    addManual(amount, name) {
-      const a = Number(amount || 0);
+
+    addManual(amount, name){
+      const a = Number(amount||0);
       if (!(a > 0)) return;
-      cart.active.lines.push({
+      state.cart.lines.push({
         key: 'M-' + uid(),
         productId: null,
         barcode: '',
-        name: String(name || 'Importe').trim() || 'Importe',
+        name: String(name||'Importe').trim() || 'Importe',
         price: a,
         cost: null,
         qty: 1,
-        isManual: true
+        isManual:true
       });
       save();
       renderAll();
     },
-    removeLine(index) {
-      cart.active.lines.splice(index, 1);
-      save();
-      renderAll();
-    },
-    setQty(index, qty) {
-      const q = Math.max(0, Math.floor(Number(qty || 0)));
-      if (q <= 0) return cart.removeLine(index);
-      cart.active.lines[index].qty = q;
-      save();
-      renderAll();
-    },
-    inc(index, delta) {
-      const l = cart.active.lines[index];
-      if (!l) return;
-      cart.setQty(index, (l.qty || 0) + delta);
-    },
-    clear() {
-      state.carts.active = { lines: [], noteName: '', payMethod: 'efectivo', given: 0 };
+
+    removeLine(index){
+      state.cart.lines.splice(index, 1);
       save();
       renderAll();
     },
 
-    parkOpen() {
-      openModal(el.modalPark);
-      renderParkedList();
-    },
-    parkNow(nameOpt) {
-      if (!cart.active.lines.length) return toast('No hay líneas');
-      const item = {
-        id: 'K-' + uid(),
-        name: String(nameOpt || '').trim(),
-        cart: JSON.parse(JSON.stringify(cart.active)),
-        ts: Date.now()
-      };
-      state.carts.parked.unshift(item);
-      cart.clear();
-      save();
-      renderParkBadge();
-      renderParkedList();
-      toast('Aparcado');
-    },
-    restoreParked(id) {
-      const idx = state.carts.parked.findIndex(x => x.id === id);
-      if (idx < 0) return;
-      if (cart.active.lines.length) {
-        if (!confirm('Hay un ticket en curso. ¿Reemplazarlo por el aparcado?')) return;
-      }
-      state.carts.active = state.carts.parked[idx].cart;
-      state.carts.parked.splice(idx, 1);
+    setQty(index, qty){
+      const q = Math.max(0, Math.floor(Number(qty||0)));
+      if (q <= 0) return cart.removeLine(index);
+      state.cart.lines[index].qty = q;
       save();
       renderAll();
-      renderParkBadge();
-      renderParkedList();
-      closeModal(el.modalPark);
-      toast('Recuperado');
     },
-    deleteParked(id) {
-      const idx = state.carts.parked.findIndex(x => x.id === id);
-      if (idx < 0) return;
-      state.carts.parked.splice(idx, 1);
+
+    inc(index, delta){
+      const l = state.cart.lines[index];
+      if (!l) return;
+      cart.setQty(index, (l.qty||0) + delta);
+    },
+
+    clearTicket(){
+      state.cart = { lines: [], payMethod: 'efectivo', given: 0, noteName: '' };
       save();
-      renderParkBadge();
-      renderParkedList();
+      renderAll();
     }
   };
 
-  function renderParkBadge() {
+  /* =========================
+     PARKED
+  ========================== */
+  function renderParkBadge(){
+    const n = state.parked.length;
     if (!el.parkBadge) return;
-    const n = state.carts.parked.length;
     el.parkBadge.hidden = n <= 0;
     el.parkBadge.textContent = String(n);
   }
 
-  function renderParkedList() {
+  function openParkModal(){
+    openModal(el.modalPark);
+    renderParkedList();
+  }
+
+  function parkNow(nameOpt){
+    if (!state.cart.lines.length) return toast('No hay líneas');
+    const item = {
+      id: 'K-' + uid(),
+      name: String(nameOpt||'').trim(),
+      cart: JSON.parse(JSON.stringify(state.cart)),
+      ts: Date.now()
+    };
+    state.parked.unshift(item);
+    cart.clearTicket();
+    save();
+    renderParkBadge();
+    renderParkedList();
+    toast('Aparcado');
+  }
+
+  function restoreParked(id){
+    const idx = state.parked.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    if (state.cart.lines.length) {
+      if (!confirm('Hay un ticket en curso. ¿Reemplazarlo por el aparcado?')) return;
+    }
+    state.cart = state.parked[idx].cart;
+    state.parked.splice(idx, 1);
+    save();
+    renderAll();
+    renderParkBadge();
+    renderParkedList();
+    closeModal(el.modalPark);
+    toast('Recuperado');
+  }
+
+  function deleteParked(id){
+    const idx = state.parked.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    state.parked.splice(idx, 1);
+    save();
+    renderParkBadge();
+    renderParkedList();
+  }
+
+  function renderParkedList(){
     if (!el.parkList) return;
     el.parkList.innerHTML = '';
-    const items = state.carts.parked.slice();
-    if (!items.length) {
+    const items = state.parked.slice();
+
+    if (!items.length){
       const div = document.createElement('div');
       div.className = 'muted';
       div.textContent = 'No hay aparcados.';
       el.parkList.appendChild(div);
       return;
     }
-    for (const it of items) {
+
+    for (const it of items){
       const div = document.createElement('div');
       div.className = 'park-item';
       const lineCount = it.cart?.lines?.length || 0;
@@ -813,23 +805,32 @@ Incluye:
           <button class="btn btn-ghost btn-small" data-act="del">Borrar</button>
         </div>
       `;
-      div.querySelector('[data-act="restore"]').addEventListener('click', () => cart.restoreParked(it.id));
-      div.querySelector('[data-act="del"]').addEventListener('click', () => cart.deleteParked(it.id));
+      div.querySelector('[data-act="restore"]').addEventListener('click', () => restoreParked(it.id));
+      div.querySelector('[data-act="del"]').addEventListener('click', () => deleteParked(it.id));
       el.parkList.appendChild(div);
     }
   }
 
   /* =========================
-     TICKET / PRINT (80mm)
+     PRINT + EMAIL
   ========================== */
-  function nextTicketNo() {
+  function canPrint(){
+    return !!state.settings.printEnabled;
+  }
+
+  function renderPrintState(){
+    if (el.printState) el.printState.textContent = canPrint() ? 'ON' : 'OFF';
+    if (el.setPrintEnabled) el.setPrintEnabled.value = canPrint() ? '1' : '0';
+  }
+
+  function nextTicketNo(){
     const n = state.counters.ticketSeq || 1;
     state.counters.ticketSeq = n + 1;
     save();
-    return `T-${String(n).padStart(6, '0')}`;
+    return `T-${String(n).padStart(6,'0')}`;
   }
 
-  function buildTicketHTML(s) {
+  function buildTicketHTML(s){
     const head = `
       <div style="text-align:center; font-weight:900; margin-bottom:4px;">${escapeHtml(state.settings.shopName)}</div>
       <div style="text-align:center; margin-bottom:8px;">${escapeHtml(state.settings.shopSub)}</div>
@@ -839,7 +840,7 @@ Incluye:
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     `;
 
-    const body = s.lines.map(l => {
+    const body = (s.lines || []).map(l => {
       const totalLine = Number(l.price) * Number(l.qty);
       return `
         <div style="display:flex; justify-content:space-between; gap:8px;">
@@ -858,8 +859,8 @@ Incluye:
         <div>TOTAL</div><div>${fmtMoney(s.total)} €</div>
       </div>
       <div>Pago: ${escapeHtml(s.payMethod)}</div>
-      ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div>Entregado: ${fmtMoney(s.given || 0)} €</div>` : ``}
-      ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div>Cambio: ${fmtMoney(s.change || 0)} €</div>` : ``}
+      ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div>Entregado: ${fmtMoney(s.given||0)} €</div>` : ``}
+      ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div>Cambio: ${fmtMoney(s.change||0)} €</div>` : ``}
       ${s.noteName ? `<div>Nota: ${escapeHtml(s.noteName)}</div>` : ``}
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
       <div style="text-align:center; margin-top:6px;">${escapeHtml(state.settings.footerText || 'Gracias por su compra')}</div>
@@ -868,571 +869,53 @@ Incluye:
     return `<div>${head}${body}${foot}</div>`;
   }
 
-  function buildZHTML(z) {
-    const sign = (n) => (n >= 0 ? '+' : '-');
-    const abs = (n) => Math.abs(Number(n || 0));
-
+  function buildZHTML(z){
+    // Z ticket 80mm
     const head = `
       <div style="text-align:center; font-weight:900; margin-bottom:4px;">${escapeHtml(state.settings.shopName)}</div>
-      <div style="text-align:center; margin-bottom:8px;">CIERRE Z · ${escapeHtml(z.dayKey)}</div>
       <div style="text-align:center; margin-bottom:8px;">${escapeHtml(state.settings.shopSub)}</div>
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
-      <div>${escapeHtml(nowEs())}</div>
-      <div>Caja: ${escapeHtml(state.settings.boxName)}  Cajero: ${escapeHtml(state.session.user.name)}</div>
+      <div style="text-align:center; font-weight:900;">CIERRE Z</div>
+      <div>${escapeHtml(z.dayKey)}  ${escapeHtml(z.at)}</div>
+      <div>Caja: ${escapeHtml(z.box)}  Cajero: ${escapeHtml(z.user)}</div>
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     `;
 
     const body = `
       <div style="display:flex; justify-content:space-between;"><div>Tickets</div><div>${z.count}</div></div>
       <div style="display:flex; justify-content:space-between;"><div>Total</div><div>${fmtMoney(z.total)} €</div></div>
-      <div style="display:flex; justify-content:space-between;"><div>Efectivo esperado</div><div>${fmtMoney(z.cashExpected)} €</div></div>
+      <div style="display:flex; justify-content:space-between;"><div>Efectivo</div><div>${fmtMoney(z.cash)} €</div></div>
       <div style="display:flex; justify-content:space-between;"><div>Tarjeta</div><div>${fmtMoney(z.card)} €</div></div>
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+      <div style="display:flex; justify-content:space-between;"><div>Efectivo esperado</div><div>${fmtMoney(z.cashExpected)} €</div></div>
       <div style="display:flex; justify-content:space-between;"><div>Efectivo contado</div><div>${fmtMoney(z.cashCounted)} €</div></div>
-      <div style="display:flex; justify-content:space-between; font-weight:900;">
-        <div>Descuadre</div><div>${sign(z.diff)}${fmtMoney(abs(z.diff))} €</div>
-      </div>
+      <div style="display:flex; justify-content:space-between; font-weight:900;"><div>Descuadre</div><div>${fmtMoney(z.diff)} €</div></div>
       ${z.note ? `<div style="margin-top:6px;">Nota: ${escapeHtml(z.note)}</div>` : ``}
     `;
 
     const foot = `
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
-      <div style="text-align:center; margin-top:6px;">Made by Arslan Waris · All rights reserved</div>
+      <div style="text-align:center;">IVA incluido en los precios</div>
     `;
-
     return `<div>${head}${body}${foot}</div>`;
   }
 
-  function printHTML(html) {
-    if (!state.settings.printOn) return; // IMPRESIÓN OFF => NO PRINT
+  function printHTML(html){
     if (!el.printArea) return;
+    if (!canPrint()) return; // ✅ impresión OFF => NO abrir panel
     el.printArea.innerHTML = html;
     window.print();
   }
 
-  function printSale(s) {
+  function printSale(s){
     printHTML(buildTicketHTML(s));
   }
 
-  /* =========================
-     SALE STORAGE (Open day)
-  ========================== */
-  function saveSale({ payMethod, cashGiven, cardAmount, cashAmount, noteName }) {
-    const { total } = cart.totals();
-    if (!(total > 0)) return null;
-
-    const ticketNo = nextTicketNo();
-    const sale = {
-      id: uid(),
-      ticketNo,
-      date: nowEs(),
-      ts: Date.now(),
-      dayKey: dateKeyLocal(),
-      box: state.settings.boxName,
-      user: state.session.user.name,
-
-      payMethod,
-      given: Number(cashGiven || 0),
-      change: 0,
-
-      noteName: String(noteName || '').trim(),
-
-      lines: cart.active.lines.map(l => ({
-        name: l.name,
-        barcode: l.barcode || '',
-        qty: Number(l.qty || 0),
-        price: Number(l.price || 0),
-        cost: l.cost == null ? null : Number(l.cost),
-        isManual: !!l.isManual
-      })),
-
-      total,
-      split: payMethod === 'mixto' ? { cash: Number(cashAmount || 0), card: Number(cardAmount || 0) } : null,
-      cardOnly: payMethod === 'tarjeta' ? Number(cardAmount || 0) : null
-    };
-
-    if (payMethod === 'efectivo') {
-      sale.change = Math.max(0, sale.given - sale.total);
-    } else if (payMethod === 'mixto') {
-      const cash = Number(cashAmount || 0);
-      const card = Number(cardAmount || 0);
-      const remaining = Math.max(0, sale.total - card);
-      sale.change = Math.max(0, cash - remaining);
-    } else {
-      sale.change = 0;
-    }
-
-    state.openSales.push(sale);
-    state.lastSaleId = sale.id;
-
-    save();
-    audit('SALE_CREATE', { ticketNo: sale.ticketNo, total: sale.total, payMethod });
-
-    return sale;
+  function printZ(z){
+    printHTML(buildZHTML(z));
   }
 
-  function getLastSale() {
-    if (state.lastSaleId) {
-      const open = state.openSales.find(s => s.id === state.lastSaleId);
-      if (open) return open;
-      for (const d of state.closedDays) {
-        const found = d.sales?.find(s => s.id === state.lastSaleId);
-        if (found) return found;
-      }
-    }
-    return state.openSales[state.openSales.length - 1] || state.closedDays.at(-1)?.sales?.at(-1) || null;
-  }
-
-  /* =========================
-     REPORTS / FILTER
-  ========================== */
-  function salesForRange(fromKey, toKey, includeOpenIfToday = false) {
-    // Inclusive by dayKey
-    const sales = [];
-    for (const day of state.closedDays) {
-      if (day.dayKey >= fromKey && day.dayKey <= toKey) {
-        sales.push(...(day.sales || []));
-      }
-    }
-    if (includeOpenIfToday) {
-      const today = dateKeyLocal();
-      if (today >= fromKey && today <= toKey) {
-        sales.push(...state.openSales);
-      }
-    }
-    return sales;
-  }
-
-  function presetRange(preset) {
-    const d = new Date();
-    const today = dateKeyLocal(d);
-
-    const ymd = (dt) => dateKeyLocal(dt);
-
-    if (preset === 'today') return { from: today, to: today, includeOpen: true };
-    if (preset === 'yesterday') {
-      const yd = new Date(d); yd.setDate(d.getDate() - 1);
-      const yk = ymd(yd);
-      return { from: yk, to: yk, includeOpen: false };
-    }
-    if (preset === 'week') {
-      // Monday-start (ES)
-      const wd = (d.getDay() + 6) % 7; // Mon=0..Sun=6
-      const start = new Date(d); start.setDate(d.getDate() - wd);
-      const end = new Date(start); end.setDate(start.getDate() + 6);
-      return { from: ymd(start), to: ymd(end), includeOpen: true };
-    }
-    if (preset === 'month') {
-      const start = new Date(d.getFullYear(), d.getMonth(), 1);
-      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      return { from: ymd(start), to: ymd(end), includeOpen: true };
-    }
-    // custom
-    const from = el.repFrom?.value || today;
-    const to = el.repTo?.value || today;
-    return { from, to, includeOpen: true };
-  }
-
-  function calcSummary(sales) {
-    const count = sales.length;
-    const total = sales.reduce((s, x) => s + (Number(x.total) || 0), 0);
-
-    const cash = sales.reduce((s, x) => {
-      if (x.payMethod === 'efectivo') return s + (Number(x.total) || 0);
-      if (x.payMethod === 'mixto') return s + (Number(x.split?.cash) || 0);
-      return s;
-    }, 0);
-
-    const card = sales.reduce((s, x) => {
-      if (x.payMethod === 'tarjeta') return s + (Number(x.total) || 0);
-      if (x.payMethod === 'mixto') return s + (Number(x.split?.card) || 0);
-      return s;
-    }, 0);
-
-    const cost = sales.reduce((S, x) => {
-      const c = (x.lines || []).reduce((sum, l) => {
-        if (l.cost == null) return sum;
-        return sum + (Number(l.cost) * Number(l.qty || 0));
-      }, 0);
-      return S + c;
-    }, 0);
-
-    const profit = total - cost;
-
-    return { count, total, cash, card, profit };
-  }
-
-  function renderReports() {
-    if (!el.repPreset) return;
-
-    const preset = el.repPreset.value || 'today';
-    const r = presetRange(preset);
-
-    if (preset !== 'custom') {
-      if (el.repFrom) el.repFrom.value = r.from;
-      if (el.repTo) el.repTo.value = r.to;
-    }
-
-    const sales = salesForRange(r.from, r.to, r.includeOpen);
-    const sum = calcSummary(sales);
-
-    if (el.statTickets) el.statTickets.textContent = String(sum.count);
-    if (el.statTotal) el.statTotal.textContent = fmtEUR(sum.total);
-    if (el.statCash) el.statCash.textContent = fmtEUR(sum.cash);
-    if (el.statCard) el.statCard.textContent = fmtEUR(sum.card);
-    if (el.statProfit) el.statProfit.textContent = fmtEUR(sum.profit);
-
-    // last Z info
-    const lastClosed = state.closedDays.at(-1);
-    if (el.zInfo) {
-      if (lastClosed?.z) {
-        const z = lastClosed.z;
-        const sign = z.diff >= 0 ? '+' : '-';
-        el.zInfo.textContent = `${lastClosed.dayKey} · esperado ${fmtEUR(z.cashExpected)} · contado ${fmtEUR(z.cashCounted)} · descuadre ${sign}${fmtEUR(Math.abs(z.diff))}`;
-      } else {
-        el.zInfo.textContent = 'Sin cierres Z.';
-      }
-    }
-
-    // Table
-    if (!el.salesTable) return;
-    const thead = el.salesTable.querySelector('.trow.thead');
-    el.salesTable.innerHTML = '';
-    if (thead) el.salesTable.appendChild(thead);
-
-    const list = sales.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 120);
-    for (const s of list) {
-      const row = document.createElement('div');
-      row.className = 'trow';
-      row.innerHTML = `
-        <div class="tcell mono">${escapeHtml(s.date)}</div>
-        <div class="tcell mono">${escapeHtml(s.ticketNo)}</div>
-        <div class="tcell">${escapeHtml(s.payMethod)}</div>
-        <div class="tcell tcell-right mono">${fmtMoney(s.total)} €</div>
-        <div class="tcell tcell-right">
-          <button class="btn btn-ghost btn-small" data-act="print">Imprimir</button>
-        </div>
-      `;
-      row.querySelector('[data-act="print"]').addEventListener('click', () => {
-        if (!state.settings.printOn) return toast('Impresión OFF');
-        printSale(s);
-      });
-      el.salesTable.appendChild(row);
-    }
-  }
-
-  /* =========================
-     Z CLOSE (archive day + clear open)
-  ========================== */
-  function summaryOpenDay() {
-    const sales = state.openSales.slice();
-    return calcSummary(sales);
-  }
-
-  function openZModal() {
-    requireAdminOrPrompt(() => {
-      const sum = summaryOpenDay();
-      const dayKey = dateKeyLocal();
-
-      if (el.zExpected) {
-        el.zExpected.textContent = `Día ${dayKey} · Tickets: ${sum.count} · Total: ${fmtEUR(sum.total)} · Efectivo esperado: ${fmtEUR(sum.cash)} · Tarjeta: ${fmtEUR(sum.card)}`;
-      }
-
-      if (el.zCashCounted) el.zCashCounted.value = '';
-      if (el.zDiff) el.zDiff.value = '0,00';
-      if (el.zNote) el.zNote.value = '';
-      if (el.zAction) el.zAction.value = 'close';
-
-      openModal(el.modalZ);
-    });
-  }
-
-  function updateZDiffUI() {
-    const sum = summaryOpenDay();
-    const counted = parseMoney(el.zCashCounted?.value || '0');
-    const diff = counted - sum.cash;
-    if (el.zDiff) {
-      const sign = diff >= 0 ? '+' : '-';
-      el.zDiff.value = `${sign}${fmtMoney(Math.abs(diff))}`;
-    }
-  }
-
-  function doZAction() {
-    const sum = summaryOpenDay();
-    const dayKey = dateKeyLocal();
-
-    const counted = parseMoney(el.zCashCounted?.value || '0');
-    const diff = counted - sum.cash;
-    const note = (el.zNote?.value || '').trim();
-    const action = el.zAction?.value || 'close';
-
-    const z = {
-      dayKey,
-      count: sum.count,
-      total: sum.total,
-      cashExpected: sum.cash,
-      card: sum.card,
-      cashCounted: counted,
-      diff,
-      note,
-      createdAt: Date.now()
-    };
-
-    // Print only
-    if (action === 'print') {
-      if (!state.settings.printOn) {
-        toast('Impresión OFF');
-      } else {
-        printHTML(buildZHTML(z));
-      }
-      closeModal(el.modalZ);
-      return;
-    }
-
-    // Close day: optionally print Z
-    if (state.settings.printOn && state.settings.printZOnClose) {
-      printHTML(buildZHTML(z));
-    }
-
-    // Archive
-    const archivedSales = state.openSales.slice();
-    const closedObj = {
-      dayKey,
-      closedAt: Date.now(),
-      z,
-      sales: archivedSales
-    };
-    state.closedDays.push(closedObj);
-
-    // Clear open sales (limpiar apartado ventas del día)
-    state.openSales = [];
-    state.lastSaleId = null;
-
-    save();
-    audit('Z_CLOSE', z);
-
-    closeModal(el.modalZ);
-    toast('Día cerrado (Z)');
-
-    // Re-render
-    renderAll();
-  }
-
-  /* =========================
-     PAY MODAL PRO
-  ========================== */
-  function syncPayUI() {
-    const m = el.payMethod?.value || 'efectivo';
-    const isCash = m === 'efectivo';
-    const isCard = m === 'tarjeta';
-    const isMix = m === 'mixto';
-
-    if (el.paySplitWrap) el.paySplitWrap.hidden = !isMix;
-    if (el.payGivenWrap) el.payGivenWrap.style.display = (isCash) ? '' : 'none';
-    if (el.payCardOnlyWrap) el.payCardOnlyWrap.style.display = (isCard) ? '' : 'none';
-
-    if (isCard) {
-      // default card input to total for convenience (optional)
-      const { total } = cart.totals();
-      if (el.payCardOnly && !String(el.payCardOnly.value || '').trim()) {
-        el.payCardOnly.value = fmtMoney(total).replace('.', ',');
-      }
-    }
-    calcPayChange();
-  }
-
-  function setChangeBig(value, isOk) {
-    if (!el.payChangeBig) return;
-    el.payChangeBig.textContent = fmtEUR(value);
-    el.payChangeBig.classList.toggle('ok', !!isOk);
-    el.payChangeBig.classList.toggle('bad', !isOk);
-  }
-
-  function calcPayChange() {
-    const { total } = cart.totals();
-    const m = el.payMethod?.value || 'efectivo';
-
-    if (el.payTotal) el.payTotal.textContent = fmtEUR(total);
-
-    if (m === 'efectivo') {
-      const given = parseMoney(el.payGiven?.value || '0');
-      const change = given - total;
-      setChangeBig(Math.max(0, change), change >= 0);
-      return;
-    }
-
-    if (m === 'tarjeta') {
-      // always ok
-      setChangeBig(0, true);
-      return;
-    }
-
-    // mixto
-    const cash = parseMoney(el.payCash?.value || '0');
-    const card = parseMoney(el.payCard?.value || '0');
-    const remaining = Math.max(0, total - card);
-    const change = cash - remaining;
-    setChangeBig(Math.max(0, change), (cash + card) >= total);
-  }
-
-  function openPayModal() {
-    const { total } = cart.totals();
-    if (!(total > 0)) return toast('No hay líneas');
-
-    if (el.payMethod) el.payMethod.value = cart.active.payMethod || 'efectivo';
-    if (el.payGiven) el.payGiven.value = '';
-    if (el.payCash) el.payCash.value = '';
-    if (el.payCard) el.payCard.value = '';
-    if (el.payCardOnly) el.payCardOnly.value = '';
-    if (el.payNote) el.payNote.value = el.noteName?.value || cart.active.noteName || '';
-
-    syncPayUI();
-    calcPayChange();
-
-    openModal(el.modalPay);
-  }
-
-  function moneyAdd(amount) {
-    const m = el.payMethod?.value || 'efectivo';
-    const { total } = cart.totals();
-
-    if (amount === 'clear') {
-      if (m === 'efectivo' && el.payGiven) el.payGiven.value = '';
-      if (m === 'mixto') {
-        if (el.payCash) el.payCash.value = '';
-        if (el.payCard) el.payCard.value = '';
-      }
-      calcPayChange();
-      return;
-    }
-
-    if (amount === 'exact') {
-      if (m === 'efectivo' && el.payGiven) el.payGiven.value = fmtMoney(total).replace('.', ',');
-      if (m === 'mixto' && el.payCash) el.payCash.value = fmtMoney(total).replace('.', ','); // assume all cash
-      calcPayChange();
-      return;
-    }
-
-    const add = Number(amount || 0);
-    if (!Number.isFinite(add)) return;
-
-    if (m === 'efectivo') {
-      const cur = parseMoney(el.payGiven?.value || '0');
-      if (el.payGiven) el.payGiven.value = fmtMoney(cur + add).replace('.', ',');
-    } else if (m === 'mixto') {
-      const cur = parseMoney(el.payCash?.value || '0');
-      if (el.payCash) el.payCash.value = fmtMoney(cur + add).replace('.', ',');
-    } else {
-      // tarjeta: ignorar billetes
-      toast('Método tarjeta: usa el campo tarjeta');
-    }
-    calcPayChange();
-  }
-
-  function keypadInsert(targetInput, k) {
-    if (!targetInput) return;
-    let v = String(targetInput.value || '');
-
-    if (k === 'c') { targetInput.value = ''; return; }
-    if (k === 'bk') { targetInput.value = v.slice(0, -1); return; }
-    if (k === '.') {
-      if (v.includes(',') || v.includes('.')) return;
-      targetInput.value = v + ',';
-      return;
-    }
-    if (k === 'ok') return; // handled outside
-    targetInput.value = v + String(k);
-  }
-
-  function activePayInput() {
-    const m = el.payMethod?.value || 'efectivo';
-    if (m === 'efectivo') return el.payGiven;
-    if (m === 'mixto') return el.payCash;
-    return el.payCardOnly;
-  }
-
-  function confirmPay({ doPrint }) {
-    const { total } = cart.totals();
-    if (!(total > 0)) return toast('No hay total');
-
-    const method = el.payMethod?.value || 'efectivo';
-    const note = (el.payNote?.value || '').trim();
-
-    let cashGiven = 0;
-    let cardAmount = 0;
-    let cashAmount = 0;
-
-    if (method === 'efectivo') {
-      cashGiven = parseMoney(el.payGiven?.value || '0');
-      if (cashGiven < total) {
-        if (!confirm('Entregado menor que total. ¿Confirmar igualmente?')) return;
-      }
-    } else if (method === 'tarjeta') {
-      cardAmount = parseMoney(el.payCardOnly?.value || '0');
-      cashGiven = 0;
-    } else {
-      cashAmount = parseMoney(el.payCash?.value || '0');
-      cardAmount = parseMoney(el.payCard?.value || '0');
-      cashGiven = cashAmount;
-
-      if ((cashAmount + cardAmount) < total) {
-        if (!confirm('Mixto: efectivo+tarjeta menor que total. ¿Confirmar igualmente?')) return;
-      }
-    }
-
-    const sale = saveSale({
-      payMethod: method,
-      cashGiven,
-      cardAmount,
-      cashAmount,
-      noteName: note
-    });
-
-    if (!sale) return toast('Error al guardar');
-
-    // update UI
-    if (el.ticketNo) el.ticketNo.textContent = sale.ticketNo;
-
-    closeModal(el.modalPay);
-
-    // limpiar ticket
-    cart.clear();
-
-    toast(`Venta OK · ${sale.ticketNo}`);
-
-    // print logic
-    if (!state.settings.printOn) return; // OFF: no print
-    if (!doPrint) return;
-    if (state.settings.autoPrint) {
-      printSale(sale);
-      return;
-    }
-    // if not autoPrint and doPrint true => print
-    printSale(sale);
-  }
-
-  /* =========================
-     QUICK AMOUNT MODAL (keypad)
-  ========================== */
-  function quickKeypadInsert(k) {
-    if (!el.quickAmount) return;
-    keypadInsert(el.quickAmount, k);
-  }
-
-  function quickOk() {
-    const amt = parseMoney(el.quickAmount?.value || '0');
-    const name = (el.quickName?.value || 'Importe').trim();
-    if (!(amt > 0)) return toast('Importe inválido');
-    cart.addManual(amt, name);
-    closeModal(el.modalQuick);
-    toast('Importe añadido');
-    if (el.quickAmount) el.quickAmount.value = '';
-  }
-
-  /* =========================
-     EMAIL
-  ========================== */
-  function buildReceiptText(s) {
+  function buildReceiptText(s){
     const out = [];
     out.push(state.settings.shopName);
     out.push(state.settings.shopSub);
@@ -1440,30 +923,32 @@ Incluye:
     out.push(`${s.ticketNo}   ${s.date}`);
     out.push(`Caja: ${s.box}   Cajero: ${s.user}`);
     out.push('------------------------------');
-    for (const l of s.lines) {
+    for (const l of (s.lines||[])){
       out.push(l.name);
-      out.push(`  ${l.qty} x ${fmtMoney(l.price)}  = ${fmtMoney(l.price * l.qty)}`);
+      out.push(`  ${l.qty} x ${fmtMoney(l.price)}  = ${fmtMoney(l.price*l.qty)}`);
     }
     out.push('------------------------------');
     out.push(`TOTAL: ${fmtMoney(s.total)} €`);
     out.push(`Pago: ${s.payMethod}`);
-    if (s.payMethod === 'efectivo' || s.payMethod === 'mixto') {
-      out.push(`Entregado: ${fmtMoney(s.given || 0)} €`);
-      out.push(`Cambio: ${fmtMoney(s.change || 0)} €`);
+    if (s.payMethod === 'efectivo' || s.payMethod === 'mixto'){
+      out.push(`Entregado: ${fmtMoney(s.given||0)} €`);
+      out.push(`Cambio: ${fmtMoney(s.change||0)} €`);
     }
     if (s.noteName) out.push(`Nota: ${s.noteName}`);
     out.push('------------------------------');
     out.push(state.settings.footerText || 'Gracias por su compra');
     out.push('IVA incluido en los precios');
-    out.push('Made by Arslan Waris · All rights reserved');
     return out.join('\n');
   }
 
-  function sendEmailMailto() {
+  function openEmailModal(){
+    openModal(el.modalEmail);
+  }
+
+  function sendEmailMailto(){
     const to = (el.emailTo?.value || '').trim();
     const extra = (el.emailMsg?.value || '').trim();
-    const last = getLastSale();
-    if (!last) return toast('No hay ticket');
+    const last = getLastSale() || buildPreviewSale();
     const subject = `Ticket ${last.ticketNo} - ${state.settings.shopName}`;
     const body = buildReceiptText(last) + (extra ? `\n\n${extra}` : '');
     const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -1471,10 +956,350 @@ Incluye:
     closeModal(el.modalEmail);
   }
 
+  function buildPreviewSale(){
+    const { total } = cart.totals();
+    return {
+      ticketNo: '(PREVIEW)',
+      date: nowEs(),
+      box: state.settings.boxName,
+      user: state.session.user.name,
+      payMethod: state.cart.payMethod,
+      given: parseMoney(el.givenInput?.value || '0'),
+      change: 0,
+      noteName: (el.noteName?.value || '').trim(),
+      lines: state.cart.lines.map(l => ({ name:l.name, qty:l.qty, price:l.price })),
+      total
+    };
+  }
+
+  function getLastSale(){
+    if (!state.lastSaleId) return state.openSales[state.openSales.length-1] || null;
+    return state.openSales.find(s => s.id === state.lastSaleId) ||
+           // buscar también en reportes cerrados
+           findSaleInReports(state.lastSaleId) ||
+           state.openSales[state.openSales.length-1] ||
+           null;
+  }
+
+  function findSaleInReports(id){
+    for (let i=state.dayReports.length-1;i>=0;i--){
+      const s = state.dayReports[i].sales?.find(x => x.id === id);
+      if (s) return s;
+    }
+    return null;
+  }
+
+  /* =========================
+     REPORT CALCS (from range)
+  ========================== */
+  function dateToKeyLocal(d){
+    // d: Date
+    const y = d.getFullYear();
+    const m = pad(d.getMonth()+1);
+    const dd = pad(d.getDate());
+    return `${y}-${m}-${dd}`;
+  }
+
+  function rangeKeysFromPreset(preset){
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const toKey = (d) => dateToKeyLocal(d);
+
+    if (preset === 'hoy') {
+      const k = toKey(today);
+      return { from:k, to:k };
+    }
+    if (preset === 'ayer') {
+      const d = new Date(today); d.setDate(d.getDate()-1);
+      const k = toKey(d);
+      return { from:k, to:k };
+    }
+    if (preset === 'semana') {
+      // Lunes a Domingo (es-ES)
+      const d = new Date(today);
+      const day = (d.getDay()+6)%7; // lunes=0
+      d.setDate(d.getDate()-day);
+      const from = toKey(d);
+      const d2 = new Date(d); d2.setDate(d2.getDate()+6);
+      const to = toKey(d2);
+      return { from, to };
+    }
+    if (preset === 'mes') {
+      const fromD = new Date(today.getFullYear(), today.getMonth(), 1);
+      const toD = new Date(today.getFullYear(), today.getMonth()+1, 0);
+      return { from: toKey(fromD), to: toKey(toD) };
+    }
+    return null;
+  }
+
+  function inRange(dayKey, fromKey, toKey){
+    return dayKey >= fromKey && dayKey <= toKey;
+  }
+
+  function collectSalesForRange(fromKey, toKey){
+    const sales = [];
+
+    // 1) días cerrados
+    for (const d of state.dayReports){
+      if (inRange(d.dayKey, fromKey, toKey)) {
+        for (const s of (d.sales || [])) sales.push({ ...s, _dayKey: d.dayKey, _closed: true });
+      }
+    }
+
+    // 2) día abierto si cae en rango
+    if (state.openDayKey && inRange(state.openDayKey, fromKey, toKey)) {
+      for (const s of (state.openSales || [])) sales.push({ ...s, _dayKey: state.openDayKey, _closed: false });
+    }
+
+    // orden por ts
+    sales.sort((a,b) => (a.ts||0) - (b.ts||0));
+    return sales;
+  }
+
+  function calcSummaryFromSales(sales){
+    const total = sales.reduce((s,x)=>s+(Number(x.total)||0),0);
+    const cash = sales.reduce((s,x)=>{
+      if (x.payMethod==='efectivo') return s + (Number(x.total)||0);
+      if (x.payMethod==='mixto') return s + (Number(x.split?.cash)||0);
+      return s;
+    },0);
+    const card = sales.reduce((s,x)=>{
+      if (x.payMethod==='tarjeta') return s + (Number(x.total)||0);
+      if (x.payMethod==='mixto') return s + (Number(x.split?.card)||0);
+      return s;
+    },0);
+    return { count: sales.length, total, cash, card };
+  }
+
+  function topProductsFromSales(sales, n=5){
+    const map = new Map();
+    for (const s of sales){
+      for (const l of (s.lines||[])){
+        const k = l.name;
+        const v = (Number(l.price) * Number(l.qty||0));
+        map.set(k, (map.get(k)||0) + v);
+      }
+    }
+    return Array.from(map.entries())
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,n)
+      .map(([name, val]) => `${name}: ${fmtEUR(val)}`)
+      .join(' · ');
+  }
+
+  /* =========================
+     SALE / PAY FLOW
+  ========================== */
+  function computeChange(){
+    const { total } = cart.totals();
+    const method = state.cart.payMethod || 'efectivo';
+    const given = parseMoney(el.givenInput?.value ?? state.cart.given);
+
+    let change = 0;
+    if (method === 'efectivo') change = Math.max(0, given - total);
+    else change = 0;
+
+    // ✅ NO flash, NO ocultar, NO timeout: siempre actualizamos y lo dejamos visible
+    if (el.changeInput) el.changeInput.value = fmtMoney(change);
+    return { total, given, change };
+  }
+
+  function nextSaleFromCart(){
+    const { total } = cart.totals();
+    if (!(total > 0)) return null;
+
+    const payMethod = state.cart.payMethod || 'efectivo';
+    const given = parseMoney(el.givenInput?.value ?? state.cart.given);
+
+    // Mixto (en este TPV: se registra como tarjeta si no implementas split aquí; dejamos split opcional future)
+    // Para mantenerlo simple: si método mixto, pedimos valores por prompt admin en futuras mejoras.
+    // Aquí: mixto se guarda como "mixto" con split null (puedes ampliarlo).
+    const sale = {
+      id: uid(),
+      ticketNo: nextTicketNo(),
+      date: nowEs(),
+      dayKey: state.openDayKey,
+      box: state.settings.boxName,
+      user: state.session.user.name,
+      payMethod,
+      given: (payMethod === 'efectivo') ? Number(given||0) : 0,
+      change: 0,
+      noteName: String(el.noteName?.value || state.cart.noteName || '').trim(),
+      lines: state.cart.lines.map(l => ({
+        name: l.name,
+        barcode: l.barcode || '',
+        qty: Number(l.qty||0),
+        price: Number(l.price||0),
+        cost: l.cost == null ? null : Number(l.cost),
+        isManual: !!l.isManual
+      })),
+      total,
+      split: null,
+      ts: Date.now()
+    };
+
+    if (payMethod === 'efectivo'){
+      sale.change = Math.max(0, sale.given - sale.total);
+    }
+    return sale;
+  }
+
+  function confirmSale(){
+    ensureOpenDay();
+    const sale = nextSaleFromCart();
+    if (!sale) return toast('No hay total');
+
+    // Validación mínima
+    if (sale.payMethod === 'efectivo' && sale.given < sale.total){
+      if (!confirm('Entregado menor que total. ¿Confirmar igualmente?')) return;
+    }
+
+    state.openSales.push(sale);
+    state.lastSaleId = sale.id;
+    save();
+    audit('SALE_CREATE', { ticketNo: sale.ticketNo, total: sale.total, payMethod: sale.payMethod });
+
+    // impresión auto
+    if (state.settings.autoPrint && canPrint()){
+      printSale(sale);
+    } else {
+      // No forzamos confirm de impresión aquí; el usuario tiene botón Imprimir o autoPrint.
+      // (Si quieres, lo cambias a confirm.)
+    }
+
+    // Limpieza ticket para seguir vendiendo rápido
+    cart.clearTicket();
+    if (el.ticketNo) el.ticketNo.textContent = sale.ticketNo;
+    toast(`Venta OK · ${sale.ticketNo}`);
+
+    // foco escáner
+    focusBarcodeSoon();
+
+    // refrescar reportes si están abiertos
+    renderReports();
+  }
+
+  function refundLast(){
+    requireAdminOrPrompt(() => {
+      const last = getLastSale();
+      if (!last) return toast('No hay venta');
+      // devolucion negativa
+      const refund = {
+        ...last,
+        id: uid(),
+        ticketNo: nextTicketNo(),
+        date: nowEs(),
+        payMethod: 'devolucion',
+        lines: (last.lines||[]).map(l => ({ ...l, qty: -Math.abs(l.qty) })),
+        total: -Math.abs(last.total),
+        noteName: `DEVOLUCIÓN de ${last.ticketNo}`,
+        ts: Date.now()
+      };
+      // se registra en día abierto (operativa)
+      state.openSales.push(refund);
+      state.lastSaleId = refund.id;
+      save();
+      audit('SALE_REFUND', { from: last.ticketNo, refund: refund.ticketNo, total: refund.total });
+      toast('Devolución registrada');
+      renderReports();
+    });
+  }
+
+  /* =========================
+     Z CLOSE (print + close day)
+  ========================== */
+  function calcOpenSummary(){
+    const sales = state.openSales.slice();
+    const sum = calcSummaryFromSales(sales);
+    return { sales, ...sum };
+  }
+
+  function openZModal(){
+    requireAdminOrPrompt(() => {
+      ensureOpenDay();
+      const { count, total, cash, card } = calcOpenSummary();
+      const expected = `Día: ${state.openDayKey}\nTickets: ${count}\nTotal: ${fmtEUR(total)}\nEfectivo: ${fmtEUR(cash)}\nTarjeta: ${fmtEUR(card)}`;
+      if (el.zExpected) el.zExpected.textContent = expected.replaceAll('\n', ' · ');
+      if (el.zCashCounted) el.zCashCounted.value = '';
+      if (el.zNote) el.zNote.value = '';
+      if (el.zDiff) el.zDiff.textContent = '—';
+      openModal(el.modalZ);
+    });
+  }
+
+  function updateZDiffLive(){
+    const { cash } = calcOpenSummary();
+    const counted = parseMoney(el.zCashCounted?.value || '0');
+    const diff = counted - cash;
+    if (el.zDiff) {
+      const sign = diff >= 0 ? '+' : '−';
+      el.zDiff.textContent = `Descuadre: ${sign}${fmtMoney(Math.abs(diff))} €`;
+    }
+  }
+
+  function closeDayWithZ(){
+    ensureOpenDay();
+    const { sales, count, total, cash, card } = calcOpenSummary();
+    const counted = parseMoney(el.zCashCounted?.value || '0');
+    const diff = counted - cash;
+    const note = (el.zNote?.value || '').trim();
+
+    const z = {
+      id: 'Z-' + uid(),
+      at: nowEs(),
+      dayKey: state.openDayKey,
+      box: state.settings.boxName,
+      user: state.session.user.name,
+      count,
+      total,
+      cash,
+      card,
+      cashExpected: cash,
+      cashCounted: counted,
+      diff,
+      note,
+      ts: Date.now()
+    };
+
+    // Guardar report del día (ventas del día abierto)
+    const dayReport = {
+      dayKey: state.openDayKey,
+      sales: sales,
+      totals: { count, total, cash, card },
+      z,
+      ts: Date.now()
+    };
+    state.dayReports.push(dayReport);
+    state.zClosures.push(z);
+
+    audit('Z_CLOSE', { dayKey: z.dayKey, total: z.total, diff: z.diff });
+
+    // Imprimir Z (si print ON)
+    if (canPrint()){
+      printZ(z);
+    }
+
+    // Cerrar día = limpiar ventas abiertas (pero ya guardadas)
+    state.openSales = [];
+    // Mantener openDayKey: si hoy es otro, rotar; si es el mismo, queda listo para nuevas ventas hoy
+    const t = todayKey();
+    if (state.openDayKey !== t) state.openDayKey = t;
+
+    // Limpiar ticket en curso
+    cart.clearTicket();
+
+    save();
+    closeModal(el.modalZ);
+    toast('Día cerrado (Z) y ventas abiertas limpiadas');
+    renderReports();
+  }
+
   /* =========================
      RENDER: HEADER / CATS / GRID / TICKET
   ========================== */
-  function renderHeader() {
+  function renderHeader(){
+    // theme + business
     setTheme(state.settings.theme || 'day');
 
     if (el.userLabel) el.userLabel.textContent = state.session.user?.name || 'CAJERO';
@@ -1485,26 +1310,22 @@ Incluye:
     if (el.posBox) el.posBox.textContent = state.settings.boxName || 'CAJA-1';
 
     if (el.ticketDate) el.ticketDate.textContent = nowEs();
-
     const seq = state.counters.ticketSeq || 1;
-    if (el.ticketNo) el.ticketNo.textContent = `T-${String(seq).padStart(6, '0')}`;
-
-    // Scanner indicator
-    if (el.scanDot) el.scanDot.style.opacity = state.settings.alwaysScan ? '1' : '.35';
+    if (el.ticketNo) el.ticketNo.textContent = `T-${String(seq).padStart(6,'0')}`;
 
     renderAdminState();
-    renderPrintToggle();
     renderParkBadge();
+    renderPrintState();
 
-    if (el.aboutVer) el.aboutVer.textContent = `v${state.version || '1.3'}`;
+    if (el.aboutVersion) el.aboutVersion.textContent = state.version;
   }
 
-  function renderCategoryChips() {
+  function renderCategoryChips(){
     if (!el.catChips) return;
     el.catChips.innerHTML = '';
     normalizeCategories();
 
-    for (const c of state.categories) {
+    for (const c of state.categories){
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'cat-chip' + (state.ui.selectedCategoryId === c.id ? ' is-active' : '');
@@ -1519,11 +1340,12 @@ Incluye:
     }
   }
 
-  function listProductsForSelectedCategory() {
+  function listProductsForSelectedCategory(){
     const catId = state.ui.selectedCategoryId || 'c_all';
     const q = String(el.searchInput?.value || '').trim().toLowerCase();
 
     let items = state.products.slice();
+
     if (catId === 'c_fav') items = items.filter(p => !!p.fav);
     else if (catId !== 'c_all') items = items.filter(p => p.categoryId === catId);
 
@@ -1534,11 +1356,34 @@ Incluye:
       );
     }
 
-    items.sort((a, b) => (Number(!!b.fav) - Number(!!a.fav)) || (a.name || '').localeCompare(b.name || ''));
-    return items.slice(0, 48);
+    items.sort((a,b) => (Number(!!b.fav) - Number(!!a.fav)) || (a.name||'').localeCompare(b.name||''));
+    return items.slice(0, 40);
   }
 
-  function makeProdTile(name, price, sub, onClick) {
+  function renderProductGrid(){
+    if (!el.prodGrid) return;
+    el.prodGrid.innerHTML = '';
+
+    // Tile: teclado para "entregado"
+    el.prodGrid.appendChild(makeProdTile('Teclado cobro', 'Entregado', 'Numérico', () => openPayKeypad()));
+
+    // Tile: importe rápido (línea)
+    el.prodGrid.appendChild(makeProdTile('Importe rápido', 'Línea manual', 'Teclado', () => openModal(el.modalQuick)));
+
+    const items = listProductsForSelectedCategory();
+    for (const p of items){
+      const sub = p.barcode ? `BC: ${p.barcode}` : 'Manual';
+      const btn = makeProdTile(p.name, fmtEUR(p.price||0), sub, () => cart.addProduct(p, 1));
+      // click derecho: editar producto (admin)
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        requireAdminOrPrompt(() => openEditProduct(p.id));
+      });
+      el.prodGrid.appendChild(btn);
+    }
+  }
+
+  function makeProdTile(name, price, sub, onClick){
     const b = document.createElement('button');
     b.className = 'prod';
     b.type = 'button';
@@ -1551,38 +1396,16 @@ Incluye:
     return b;
   }
 
-  function renderProductGrid() {
-    if (!el.prodGrid) return;
-    el.prodGrid.innerHTML = '';
-
-    // tile: importe rápido
-    el.prodGrid.appendChild(makeProdTile('Importe rápido', 'Manual', 'Teclado', () => openModal(el.modalQuick)));
-
-    const items = listProductsForSelectedCategory();
-    for (const p of items) {
-      const sub = p.barcode ? `BC: ${p.barcode}` : 'Manual';
-      const btn = makeProdTile(p.name, fmtEUR(p.price || 0), sub, () => cart.addProduct(p, 1));
-
-      // right click => editar producto (admin)
-      btn.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        requireAdminOrPrompt(() => openEditProduct(p.id));
-      });
-
-      el.prodGrid.appendChild(btn);
-    }
-  }
-
-  function renderTicketLines() {
+  function renderTicketLines(){
     if (!el.ticketLines) return;
     const thead = el.ticketLines.querySelector('.trow.thead');
     el.ticketLines.innerHTML = '';
     if (thead) el.ticketLines.appendChild(thead);
 
-    cart.active.lines.forEach((l, idx) => {
+    state.cart.lines.forEach((l, idx) => {
       const row = document.createElement('div');
       row.className = 'trow';
-      row.setAttribute('role', 'row');
+      row.setAttribute('role','row');
       row.innerHTML = `
         <div class="tcell">
           <div>
@@ -1601,8 +1424,8 @@ Incluye:
         <div class="tcell tcell-right mono">${fmtMoney(l.price * l.qty)}</div>
       `;
       const btnMinus = row.querySelectorAll('.qty-btn')[0];
-      const btnPlus = row.querySelectorAll('.qty-btn')[1];
-      const qtyIn = row.querySelector('.qty-in');
+      const btnPlus  = row.querySelectorAll('.qty-btn')[1];
+      const qtyIn    = row.querySelector('.qty-in');
 
       btnMinus.addEventListener('click', () => cart.inc(idx, -1));
       btnPlus.addEventListener('click', () => cart.inc(idx, +1));
@@ -1611,68 +1434,68 @@ Incluye:
         if (e.key === 'Enter') { e.preventDefault(); qtyIn.blur(); focusBarcodeSoon(); }
       });
 
-      // right click delete line
+      // right click delete
       row.addEventListener('contextmenu', (e) => { e.preventDefault(); cart.removeLine(idx); });
 
       el.ticketLines.appendChild(row);
     });
   }
 
-  function renderTotals() {
+  function renderTotalsAndPay(){
     const { total } = cart.totals();
-    if (el.linesCount) el.linesCount.textContent = String(cart.active.lines.length);
+    if (el.linesCount) el.linesCount.textContent = String(state.cart.lines.length);
     if (el.subTotal) el.subTotal.textContent = fmtEUR(total);
     if (el.grandTotal) el.grandTotal.textContent = fmtEUR(total);
 
-    const method = cart.active.payMethod || 'efectivo';
-    const given = parseMoney(el.givenInput?.value ?? cart.active.given);
-    const change = (method === 'efectivo') ? Math.max(0, given - total) : 0;
-    if (el.changeInput) el.changeInput.value = fmtMoney(change);
+    // keep note
+    if (el.noteName && state.cart.noteName !== el.noteName.value) {
+      // no forzamos, solo sincronizamos cuando está vacío
+      if (!el.noteName.value) el.noteName.value = state.cart.noteName || '';
+    }
+
+    computeChange(); // ✅ cambio permanente
   }
 
   /* =========================
-     PRODUCTS TABLE (tab Productos)
+     PRODUCTS TABLE
   ========================== */
-  function fillCategorySelect(sel, includeAll = true) {
+  function fillCategorySelect(sel, includeAll=true){
     if (!sel) return;
     sel.innerHTML = '';
-    if (includeAll) {
+    if (includeAll){
       const o = document.createElement('option');
-      o.value = '';
-      o.textContent = 'Todas';
+      o.value = ''; o.textContent = 'Todas';
       sel.appendChild(o);
     }
-    for (const c of state.categories) {
+    for (const c of state.categories){
       if (c.id === 'c_all' || c.id === 'c_fav') continue;
       const o = document.createElement('option');
-      o.value = c.id;
-      o.textContent = c.name;
+      o.value = c.id; o.textContent = c.name;
       sel.appendChild(o);
     }
   }
 
-  function renderProductsTable() {
+  function renderProductsTable(){
     if (!el.productsTable) return;
 
     fillCategorySelect(el.prodSearchCat, true);
-    fillCategorySelect(el.prodCat, false);
 
     const thead = el.productsTable.querySelector('.trow.thead');
     el.productsTable.innerHTML = '';
     if (thead) el.productsTable.appendChild(thead);
 
     const qName = String(el.prodSearchName?.value || '').trim().toLowerCase();
-    const qBar = String(el.prodSearchBarcode?.value || '').trim();
-    const qCat = String(el.prodSearchCat?.value || '').trim();
+    const qBar  = String(el.prodSearchBarcode?.value || '').trim();
+    const qCat  = String(el.prodSearchCat?.value || '').trim();
 
     let items = state.products.slice();
-    if (qName) items = items.filter(p => (p.name || '').toLowerCase().includes(qName));
-    if (qBar) items = items.filter(p => String(p.barcode || '').includes(qBar));
-    if (qCat) items = items.filter(p => p.categoryId === qCat);
+    if (qName) items = items.filter(p => (p.name||'').toLowerCase().includes(qName));
+    if (qBar)  items = items.filter(p => String(p.barcode||'').includes(qBar));
+    if (qCat)  items = items.filter(p => p.categoryId === qCat);
 
-    items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
-    for (const p of items) {
+    for (const p of items){
       const row = document.createElement('div');
       row.className = 'trow';
       row.innerHTML = `
@@ -1683,8 +1506,8 @@ Incluye:
           </div>
         </div>
         <div class="tcell mono">${escapeHtml(p.barcode || '—')}</div>
-        <div class="tcell tcell-right mono">${fmtMoney(p.price || 0)}</div>
-        <div class="tcell tcell-right mono">${p.cost == null ? '—' : fmtMoney(p.cost)}</div>
+        <div class="tcell tcell-right mono">${fmtMoney(p.price||0)}</div>
+        <div class="tcell tcell-right mono">${p.cost==null?'—':fmtMoney(p.cost)}</div>
         <div class="tcell">${escapeHtml(getCatName(p.categoryId))}</div>
         <div class="tcell tcell-center">${p.fav ? '<span class="badge badge-ok">Sí</span>' : '<span class="badge">No</span>'}</div>
         <div class="tcell tcell-right">
@@ -1692,7 +1515,6 @@ Incluye:
           <button class="btn btn-ghost btn-small" data-act="del">Borrar</button>
         </div>
       `;
-
       row.querySelector('[data-act="edit"]').addEventListener('click', () => openEditProduct(p.id));
       row.querySelector('[data-act="del"]').addEventListener('click', () => {
         requireAdminOrPrompt(() => {
@@ -1702,15 +1524,78 @@ Incluye:
           renderAll();
         });
       });
-
       el.productsTable.appendChild(row);
     }
   }
 
   /* =========================
-     PRODUCT MODAL
+     REPORTES RENDER
   ========================== */
-  function openNewProduct(prefillBarcode = '') {
+  function setReportDatesByPreset(){
+    const preset = el.repPreset?.value || 'hoy';
+    const r = rangeKeysFromPreset(preset);
+    if (!r) return;
+    if (el.repFrom) el.repFrom.value = r.from;
+    if (el.repTo) el.repTo.value = r.to;
+  }
+
+  function renderReports(){
+    if (!el.repFrom || !el.repTo) return;
+
+    const preset = el.repPreset?.value || 'hoy';
+    if (preset !== 'personal') setReportDatesByPreset();
+
+    const fromKey = el.repFrom.value || todayKey();
+    const toKey = el.repTo.value || todayKey();
+
+    const sales = collectSalesForRange(fromKey, toKey);
+    const sum = calcSummaryFromSales(sales);
+
+    if (el.statTickets) el.statTickets.textContent = String(sum.count);
+    if (el.statTotal) el.statTotal.textContent = fmtEUR(sum.total);
+    if (el.statCash) el.statCash.textContent = fmtEUR(sum.cash);
+    if (el.statCard) el.statCard.textContent = fmtEUR(sum.card);
+
+    if (el.topProducts) el.topProducts.textContent = topProductsFromSales(sales) || '—';
+
+    // cierres Z info: último cierre dentro del rango
+    if (el.zInfo){
+      const zs = state.zClosures.filter(z => inRange(z.dayKey, fromKey, toKey));
+      const lastZ = zs.slice(-1)[0];
+      el.zInfo.textContent = lastZ
+        ? `${lastZ.dayKey} · esperado ${fmtEUR(lastZ.cashExpected)} · contado ${fmtEUR(lastZ.cashCounted)} · descuadre ${fmtEUR(lastZ.diff)}`
+        : 'Sin cierres.';
+    }
+
+    // tabla ventas
+    if (el.salesTable){
+      const thead = el.salesTable.querySelector('.trow.thead');
+      el.salesTable.innerHTML = '';
+      if (thead) el.salesTable.appendChild(thead);
+
+      const last = sales.slice().reverse().slice(0, 120);
+      for (const s of last){
+        const row = document.createElement('div');
+        row.className = 'trow';
+        row.innerHTML = `
+          <div class="tcell mono">${escapeHtml(s.date)}${s._closed ? '' : ' · (abierto)'}</div>
+          <div class="tcell mono">${escapeHtml(s.ticketNo)}</div>
+          <div class="tcell">${escapeHtml(s.payMethod)}</div>
+          <div class="tcell tcell-right mono">${fmtMoney(s.total)} €</div>
+          <div class="tcell tcell-right">
+            <button class="btn btn-ghost btn-small" data-act="print">Imprimir</button>
+          </div>
+        `;
+        row.querySelector('[data-act="print"]').addEventListener('click', () => printSale(s));
+        el.salesTable.appendChild(row);
+      }
+    }
+  }
+
+  /* =========================
+     PRODUCT MODAL (new/edit)
+  ========================== */
+  function openNewProduct(prefillBarcode=''){
     el.modalProduct.dataset.editId = '';
     if (el.prodModalTitle) el.prodModalTitle.textContent = 'Nuevo producto';
 
@@ -1720,17 +1605,16 @@ Incluye:
     if (el.prodName) el.prodName.value = '';
     if (el.prodPrice) el.prodPrice.value = '';
     if (el.prodCost) el.prodCost.value = '';
-    if (el.prodCat) el.prodCat.value = state.categories.find(c => c.id === 'c_ot')?.id || state.categories.find(c => !['c_all', 'c_fav'].includes(c.id))?.id || '';
+    if (el.prodCat) el.prodCat.value = state.categories.find(c=>c.id==='c_ot')?.id || state.categories.find(c=>c.id!=='c_all'&&c.id!=='c_fav')?.id || '';
     if (el.prodFav) el.prodFav.value = '1';
     if (el.prodUnit) el.prodUnit.value = 'ud';
 
     openModal(el.modalProduct);
   }
 
-  function openEditProduct(id) {
+  function openEditProduct(id){
     const p = state.products.find(x => x.id === id);
     if (!p) return toast('Producto no encontrado');
-
     el.modalProduct.dataset.editId = p.id;
     if (el.prodModalTitle) el.prodModalTitle.textContent = 'Editar producto';
 
@@ -1739,7 +1623,7 @@ Incluye:
     el.prodBarcode.value = p.barcode || '';
     el.prodName.value = p.name || '';
     el.prodPrice.value = fmtMoney(p.price || 0).replace('.', ',');
-    el.prodCost.value = p.cost == null ? '' : fmtMoney(p.cost).replace('.', ',');
+    el.prodCost.value = p.cost==null ? '' : fmtMoney(p.cost).replace('.', ',');
     el.prodCat.value = p.categoryId || '';
     el.prodFav.value = p.fav ? '1' : '0';
     el.prodUnit.value = p.unit || 'ud';
@@ -1747,14 +1631,14 @@ Incluye:
     openModal(el.modalProduct);
   }
 
-  function saveProductFromModal() {
+  function saveProductFromModal(){
     const editId = el.modalProduct.dataset.editId || '';
     const barcode = (el.prodBarcode?.value || '').trim();
     const name = (el.prodName?.value || '').trim();
     const price = parseMoney(el.prodPrice?.value || '0');
     const costRaw = (el.prodCost?.value || '').trim();
     const cost = costRaw ? parseMoney(costRaw) : null;
-    const categoryId = el.prodCat?.value || (state.categories.find(c => c.id === 'c_ot')?.id || 'c_all');
+    const categoryId = el.prodCat?.value || (state.categories.find(c=>c.id==='c_ot')?.id || 'c_all');
     const fav = (el.prodFav?.value || '0') === '1';
     const unit = el.prodUnit?.value || 'ud';
 
@@ -1766,26 +1650,24 @@ Incluye:
 
     closeModal(el.modalProduct);
     toast('Producto guardado');
-
-    // refrescar
     renderAll();
   }
 
   /* =========================
      CATEGORIES MODAL
   ========================== */
-  function openCatsModal() {
+  function openCatsModal(){
     requireAdminOrPrompt(() => {
       openModal(el.modalCats);
       renderCatsModal();
     });
   }
 
-  function renderCatsModal() {
+  function renderCatsModal(){
     if (!el.catList) return;
     el.catList.innerHTML = '';
 
-    for (const c of state.categories) {
+    for (const c of state.categories){
       const special = (c.id === 'c_all' || c.id === 'c_fav');
       const div = document.createElement('div');
       div.className = 'cat-item';
@@ -1824,7 +1706,7 @@ Incluye:
     }
   }
 
-  function createCatFromModal() {
+  function createCatFromModal(){
     requireAdminOrPrompt(() => {
       const name = (el.newCatName?.value || '').trim();
       const c = createCategory(name);
@@ -1837,60 +1719,238 @@ Incluye:
   }
 
   /* =========================
-     CSV / JSON IMPORT EXPORT
+     QUICK AMOUNT (línea) + keypad
   ========================== */
-  function exportProductsCSV() {
-    const rows = [['barcode', 'nombre', 'pvp', 'coste', 'categoria', 'fav', 'unidad']];
-    for (const p of state.products) {
+  function keypadInsertQuick(k){
+    const inp = el.quickAmount;
+    if (!inp) return;
+    let v = String(inp.value || '');
+    if (k === 'c'){ inp.value=''; return; }
+    if (k === 'bk'){ inp.value = v.slice(0,-1); return; }
+    if (k === ','){
+      if (v.includes(',') || v.includes('.')) return;
+      inp.value = v + ',';
+      return;
+    }
+    if (k === 'ok'){ quickOk(); return; }
+    inp.value = v + String(k);
+  }
+
+  function quickOk(){
+    const amt = parseMoney(el.quickAmount?.value || '0');
+    const name = (el.quickName?.value || 'Importe').trim();
+    if (!(amt > 0)) return toast('Importe inválido');
+    cart.addManual(amt, name);
+    closeModal(el.modalQuick);
+    toast('Importe añadido');
+    if (el.quickAmount) el.quickAmount.value = '';
+  }
+
+  /* =========================
+     PAY KEYPAD (Entregado) - modal creado por JS
+  ========================== */
+  let payPadDlg = null;
+
+  function ensurePayPad(){
+    if (payPadDlg) return;
+
+    // CSS keypad ya existe; creamos un <dialog> similar
+    payPadDlg = document.createElement('dialog');
+    payPadDlg.className = 'modal';
+    payPadDlg.id = 'modalPayPad';
+    payPadDlg.setAttribute('aria-label', 'Teclado cobro');
+
+    payPadDlg.innerHTML = `
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Teclado cobro</div>
+          <div class="muted small">Entregado → cambio inmediato</div>
+        </div>
+        <button class="icon-btn" data-close-local="1" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-row">
+          <label class="field">
+            <span>Entregado (€)</span>
+            <input id="payPadValue" inputmode="decimal" placeholder="0,00" />
+          </label>
+          <label class="field">
+            <span>Cambio</span>
+            <input id="payPadChange" disabled placeholder="0,00" />
+          </label>
+        </div>
+
+        <div class="keypad" id="keypadPay">
+          <button class="key" data-k="7">7</button><button class="key" data-k="8">8</button><button class="key" data-k="9">9</button><button class="key key-fn" data-k="bk">⌫</button>
+          <button class="key" data-k="4">4</button><button class="key" data-k="5">5</button><button class="key" data-k="6">6</button><button class="key key-fn" data-k="c">C</button>
+          <button class="key" data-k="1">1</button><button class="key" data-k="2">2</button><button class="key" data-k="3">3</button><button class="key key-fn" data-k=",">,</button>
+          <button class="key key-wide" data-k="0">0</button><button class="key" data-k="00">00</button><button class="key key-ok" data-k="ok">OK</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close-local="1" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="btnPayPadOk" type="button">Aplicar</button>
+      </div>
+    `;
+
+    document.body.appendChild(payPadDlg);
+
+    // close
+    payPadDlg.querySelectorAll('[data-close-local]').forEach(b => {
+      b.addEventListener('click', () => {
+        payPadDlg.close();
+        if (el.backdrop) el.backdrop.hidden = true;
+        focusBarcodeSoon();
+      });
+    });
+
+    // keypad
+    const padInput = payPadDlg.querySelector('#payPadValue');
+    const padChange = payPadDlg.querySelector('#payPadChange');
+
+    const update = () => {
+      const { total } = cart.totals();
+      const given = parseMoney(padInput.value || '0');
+      const change = Math.max(0, given - total);
+      padChange.value = fmtMoney(change);
+    };
+
+    padInput.addEventListener('input', update);
+
+    payPadDlg.querySelector('#keypadPay').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-k]');
+      if (!btn) return;
+      const k = btn.dataset.k;
+
+      let v = String(padInput.value || '');
+      if (k === 'c'){ padInput.value=''; update(); return; }
+      if (k === 'bk'){ padInput.value=v.slice(0,-1); update(); return; }
+      if (k === ','){
+        if (v.includes(',') || v.includes('.')) return;
+        padInput.value = v + ',';
+        update();
+        return;
+      }
+      if (k === 'ok'){
+        applyPayPadValue(padInput.value);
+        return;
+      }
+      padInput.value = v + String(k);
+      update();
+    });
+
+    payPadDlg.querySelector('#btnPayPadOk').addEventListener('click', () => applyPayPadValue(padInput.value));
+  }
+
+  function openPayKeypad(){
+    ensurePayPad();
+    if (el.backdrop) el.backdrop.hidden = false;
+    payPadDlg.showModal();
+
+    const padInput = payPadDlg.querySelector('#payPadValue');
+    const padChange = payPadDlg.querySelector('#payPadChange');
+
+    // preload current given
+    padInput.value = (el.givenInput?.value || '').trim();
+    const { total } = cart.totals();
+    const given = parseMoney(padInput.value || '0');
+    padChange.value = fmtMoney(Math.max(0, given - total));
+
+    setTimeout(() => padInput.focus(), 25);
+  }
+
+  function applyPayPadValue(value){
+    const v = parseMoney(value || '0');
+    if (el.givenInput) el.givenInput.value = fmtMoney(v).replace('.', ','); // es-ES, aunque fmtMoney ya usa coma en UI
+    state.cart.given = v;
+    save();
+    computeChange();
+    payPadDlg.close();
+    if (el.backdrop) el.backdrop.hidden = true;
+    focusBarcodeSoon();
+  }
+
+  /* =========================
+     EXPORTS / BACKUP
+  ========================== */
+  function exportProductsCSV(){
+    const rows = [['barcode','nombre','pvp','coste','categoria','fav','unidad']];
+    for (const p of state.products){
       rows.push([
         p.barcode || '',
         p.name || '',
-        fmtMoney(p.price || 0),
-        (p.cost == null ? '' : fmtMoney(p.cost)),
+        fmtMoney(p.price||0),
+        (p.cost==null?'':fmtMoney(p.cost)),
         getCatName(p.categoryId),
-        p.fav ? '1' : '0',
+        p.fav ? '1':'0',
         p.unit || 'ud'
       ]);
     }
     downloadText('tpv_productos.csv', toCSV(rows), 'text/csv');
   }
 
-  function allSalesFlat() {
-    const sales = [];
-    // closed days
-    for (const d of state.closedDays) sales.push(...(d.sales || []));
-    // open day
-    sales.push(...state.openSales);
-    return sales;
-  }
-
-  function exportSalesCSV() {
-    const rows = [['fecha', 'ticket', 'pago', 'total', 'cajero', 'caja', 'dia', 'lineas']];
-    const sales = allSalesFlat().slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
-    for (const s of sales) {
+  function exportSalesCSV(){
+    // Exporta TODAS las ventas: abiertas + cerradas
+    const rows = [['dia','fecha','ticket','pago','total','cajero','caja','lineas']];
+    // cerradas
+    for (const d of state.dayReports){
+      for (const s of (d.sales||[])){
+        rows.push([
+          d.dayKey,
+          s.date,
+          s.ticketNo,
+          s.payMethod,
+          fmtMoney(s.total||0),
+          s.user,
+          s.box,
+          (s.lines||[]).map(l => `${l.name}(${l.qty}x${fmtMoney(l.price)})`).join(' | ')
+        ]);
+      }
+    }
+    // abiertas
+    for (const s of state.openSales){
       rows.push([
+        state.openDayKey,
         s.date,
         s.ticketNo,
         s.payMethod,
-        fmtMoney(s.total || 0),
+        fmtMoney(s.total||0),
         s.user,
         s.box,
-        s.dayKey || '',
-        (s.lines || []).map(l => `${l.name}(${l.qty}x${fmtMoney(l.price)})`).join(' | ')
+        (s.lines||[]).map(l => `${l.name}(${l.qty}x${fmtMoney(l.price)})`).join(' | ')
       ]);
     }
     downloadText('tpv_ventas.csv', toCSV(rows), 'text/csv');
   }
 
-  function backupJSON() {
+  function exportZCSV(){
+    const rows = [['dia','hora','tickets','total','efectivo','tarjeta','esperado','contado','descuadre','nota']];
+    for (const z of state.zClosures){
+      rows.push([
+        z.dayKey,
+        z.at,
+        z.count,
+        fmtMoney(z.total||0),
+        fmtMoney(z.cash||0),
+        fmtMoney(z.card||0),
+        fmtMoney(z.cashExpected||0),
+        fmtMoney(z.cashCounted||0),
+        fmtMoney(z.diff||0),
+        z.note || ''
+      ]);
+    }
+    downloadText('tpv_cierres_z.csv', toCSV(rows), 'text/csv');
+  }
+
+  function backupJSON(){
     downloadText('tpv_backup.json', JSON.stringify(state, null, 2), 'application/json');
   }
 
-  function restoreJSONFromFile(file) {
+  function restoreJSONFromFile(file){
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const data = JSON.parse(String(reader.result || ''));
+      try{
+        const data = JSON.parse(String(reader.result||''));
         state = deepMerge(DEFAULTS(), data);
         save();
         toast('Restaurado');
@@ -1902,62 +1962,62 @@ Incluye:
     reader.readAsText(file);
   }
 
-  function importProductsFromCSVFile(file) {
+  function importProductsFromCSVFile(file){
     const reader = new FileReader();
     reader.onload = () => {
-      const rows = parseCSV(String(reader.result || ''));
+      const rows = parseCSV(String(reader.result||''));
       if (!rows.length) return toast('CSV vacío');
 
       const headers = rows[0].map(h => h.toLowerCase());
       const idx = (name) => headers.indexOf(name);
 
       const iBarcode = idx('barcode');
-      const iNombre = idx('nombre');
-      const iPvp = idx('pvp');
-      const iCoste = idx('coste');
-      const iCat = idx('categoria');
-      const iFav = idx('fav');
-      const iUnit = idx('unidad');
+      const iNombre  = idx('nombre');
+      const iPvp     = idx('pvp');
+      const iCoste   = idx('coste');
+      const iCat     = idx('categoria');
+      const iFav     = idx('fav');
+      const iUnit    = idx('unidad');
 
-      const hasHeaders = (iNombre >= 0 && iPvp >= 0);
+      const hasHeaders = iNombre >= 0 && iPvp >= 0;
 
       let imported = 0;
 
-      for (let r = 1; r < rows.length; r++) {
+      for (let r=1; r<rows.length; r++){
         const row = rows[r];
-        const get = (i, fallback = '') => (i >= 0 ? (row[i] ?? fallback) : fallback);
+        const get = (i, fallback='') => (i>=0 ? (row[i] ?? fallback) : fallback);
 
-        const barcode = hasHeaders ? get(iBarcode, '') : (row[0] ?? '');
-        const name = hasHeaders ? get(iNombre, '') : (row[1] ?? '');
-        const pvpStr = hasHeaders ? get(iPvp, '0') : (row[2] ?? '0');
-        const costStr = hasHeaders ? get(iCoste, '') : (row[3] ?? '');
-        const catName = hasHeaders ? get(iCat, '') : (row[4] ?? '');
-        const favStr = hasHeaders ? get(iFav, '0') : (row[5] ?? '0');
-        const unit = hasHeaders ? get(iUnit, 'ud') : (row[6] ?? 'ud');
+        const barcode = hasHeaders ? get(iBarcode,'') : (row[0] ?? '');
+        const name    = hasHeaders ? get(iNombre,'')  : (row[1] ?? '');
+        const pvpStr  = hasHeaders ? get(iPvp,'0')    : (row[2] ?? '0');
+        const costStr = hasHeaders ? get(iCoste,'')   : (row[3] ?? '');
+        const catName = hasHeaders ? get(iCat,'')     : (row[4] ?? '');
+        const favStr  = hasHeaders ? get(iFav,'0')    : (row[5] ?? '0');
+        const unit    = hasHeaders ? get(iUnit,'ud')  : (row[6] ?? 'ud');
 
-        if (!String(name || '').trim()) continue;
+        if (!String(name||'').trim()) continue;
 
         const price = parseMoney(pvpStr);
-        const cost = String(costStr || '').trim() ? parseMoney(costStr) : null;
-        const fav = String(favStr || '0').trim() === '1';
+        const cost  = String(costStr||'').trim() ? parseMoney(costStr) : null;
+        const fav   = String(favStr||'0').trim() === '1';
 
-        let catId = state.categories.find(c => c.name.toLowerCase() === String(catName || '').trim().toLowerCase())?.id;
-        if (!catId) {
-          const created = createCategory(String(catName || '').trim());
-          catId = created?.id || state.categories.find(c => c.id === 'c_ot')?.id || 'c_all';
+        // categoría por nombre (crea si no existe)
+        let catId = state.categories.find(c => c.name.toLowerCase() === String(catName||'').trim().toLowerCase())?.id;
+        if (!catId){
+          const created = createCategory(String(catName||'').trim());
+          catId = created?.id || state.categories.find(c=>c.id==='c_ot')?.id || 'c_all';
         }
 
         const res = addOrUpdateProduct({
           id: undefined,
-          barcode: String(barcode || '').trim(),
+          barcode: String(barcode||'').trim(),
           name: String(name).trim(),
           price,
           cost,
           categoryId: catId,
           fav,
-          unit: String(unit || 'ud').trim()
+          unit: String(unit||'ud').trim()
         });
-
         if (res.ok) imported++;
       }
 
@@ -1968,141 +2028,133 @@ Incluye:
   }
 
   /* =========================
-     SCANNER: ALWAYS LISTENING
+     SCANNER (always listening)
   ========================== */
   const scanner = {
     buf: '',
     lastTs: 0,
     timer: null,
-    enabled() { return !!state.settings.alwaysScan; },
-    speedMs() {
-      const ms = Number(state.settings.scanSpeedMs || 35);
-      return Math.max(15, Math.min(140, ms));
-    },
-    reset() {
+
+    enabled(){ return !!state.settings.alwaysScan; },
+    speedMs(){ return Math.max(15, Math.min(120, Number(state.settings.scanSpeedMs || 35))); },
+
+    reset(){
       scanner.buf = '';
       scanner.lastTs = 0;
       if (scanner.timer) { clearTimeout(scanner.timer); scanner.timer = null; }
     },
-    pushChar(ch) {
+
+    pushChar(ch){
       const t = Date.now();
       const gap = scanner.lastTs ? (t - scanner.lastTs) : 0;
       const maxGap = scanner.speedMs();
 
-      // if too slow, treat as new buffer
       if (scanner.lastTs && gap > maxGap) scanner.buf = '';
-
       scanner.lastTs = t;
       scanner.buf += ch;
 
       if (scanner.timer) clearTimeout(scanner.timer);
       scanner.timer = setTimeout(() => {
-        // fallback finalize if scanner didn't send Enter
+        // Si el lector NO manda Enter, intentamos con buffer largo
         if (scanner.buf.length >= 8) finalizeScan(scanner.buf);
         scanner.reset();
-      }, maxGap + 140);
+      }, maxGap + 120);
     }
   };
 
-  function finalizeScan(code) {
-    const c = String(code || '').trim();
+  function finalizeScan(code){
+    const c = String(code||'').trim();
     if (!c) return;
 
-    // do not scan while a dialog is open (avoid typing into modals)
+    // No capturar en diálogos abiertos
     if (document.querySelector('dialog[open]')) return;
 
     const p = findProductByBarcode(c);
-    if (p) {
+    if (p){
       cart.addProduct(p, 1);
-      flashScan();
       toast('Escaneado ✓');
-      if (el.barcodeInput) el.barcodeInput.value = '';
     } else {
       openNewProduct(c);
       toast('Barcode no encontrado: alta producto');
     }
+    if (el.barcodeInput) el.barcodeInput.value = '';
     focusBarcodeSoon();
   }
 
-  function flashScan() {
-    if (!el.scanDot) return;
-    el.scanDot.style.boxShadow = '0 0 0 8px rgba(11,61,46,.22)';
-    setTimeout(() => { el.scanDot.style.boxShadow = '0 0 0 5px rgba(11,61,46,.14)'; }, 180);
+  /* =========================
+     BILL BUTTONS + PAY PANEL
+  ========================== */
+  function setGivenValue(val){
+    const v = Math.max(0, Number(val||0));
+    state.cart.given = v;
+    if (el.givenInput) el.givenInput.value = fmtMoney(v);
+    save();
+    computeChange();
+  }
+
+  function addGiven(delta){
+    const cur = parseMoney(el.givenInput?.value ?? state.cart.given);
+    setGivenValue(cur + Number(delta||0));
+  }
+
+  function setExactGiven(){
+    const { total } = cart.totals();
+    setGivenValue(total);
+  }
+
+  function clearGiven(){
+    setGivenValue(0);
   }
 
   /* =========================
      ABOUT COPY
   ========================== */
-  async function copyAbout() {
+  function copyAbout(){
     const txt =
 `TPV NADEEM LOCUTORIO
-Version: v${state.version || '1.3'}
+Versión: ${state.version}
 Made by Arslan Waris · All rights reserved
-Local (GitHub Pages) · IVA incluido`;
-    try {
-      await navigator.clipboard.writeText(txt);
-      toast('Copiado');
-    } catch {
-      toast('No se pudo copiar');
-    }
+Modo: Local (GitHub Pages) · IVA incluido`;
+    navigator.clipboard?.writeText(txt).then(() => toast('Copiado')).catch(() => toast('No se pudo copiar'));
   }
 
   /* =========================
      RENDER ALL
   ========================== */
-  function renderAll() {
+  function renderAll(){
+    ensureOpenDay();
     renderHeader();
     renderCategoryChips();
     renderProductGrid();
     renderTicketLines();
-    renderTotals();
+    renderTotalsAndPay();
     renderProductsTable();
     renderReports();
   }
 
   /* =========================
-     EVENTS / BINDINGS
+     EVENTS
   ========================== */
-  function bindTabs() {
-    el.tabs.forEach(t => t.addEventListener('click', () => {
-      touchActivity();
-      setTab(t.dataset.tab);
-      renderAll();
-    }));
+  function bindTabs(){
+    el.tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
   }
 
-  function bindTop() {
-    el.btnTheme?.addEventListener('click', () => {
-      touchActivity();
-      setTheme(document.body.classList.contains('theme-day') ? 'night' : 'day');
-    });
-
-    el.btnPrintToggle?.addEventListener('click', () => {
-      touchActivity();
-      state.settings.printOn = !state.settings.printOn;
-      save();
-      renderPrintToggle();
-      toast(state.settings.printOn ? 'Impresión ON' : 'Impresión OFF');
-    });
-
+  function bindTop(){
+    el.btnTheme?.addEventListener('click', () => setTheme(document.body.classList.contains('theme-day') ? 'night' : 'day'));
     el.btnLogin?.addEventListener('click', () => openModal(el.modalLogin));
     el.btnAdmin?.addEventListener('click', () => openModal(el.modalAdmin));
     el.btnAdminUnlock?.addEventListener('click', () => openModal(el.modalAdmin));
   }
 
-  function bindModals() {
+  function bindModals(){
     el.backdrop?.addEventListener('click', () => {
       const open = document.querySelector('dialog[open]');
       if (open) closeModal(open);
     });
-
-    el.closeBtns.forEach(b => b.addEventListener('click', () => {
-      closeModal(document.getElementById(b.dataset.close));
-    }));
+    el.closeBtns.forEach(b => b.addEventListener('click', () => closeModal(document.getElementById(b.dataset.close))));
 
     // login
     el.btnLoginOk?.addEventListener('click', async () => {
-      touchActivity();
       const res = await login(el.loginUser?.value || '', el.loginPass?.value || '');
       if (!res.ok) return toast(res.msg || 'Login error');
       closeModal(el.modalLogin);
@@ -2110,85 +2162,140 @@ Local (GitHub Pages) · IVA incluido`;
       renderAll();
     });
 
-    // admin
+    // admin pin
     el.btnAdminOk?.addEventListener('click', async () => {
-      touchActivity();
       const pin = (el.adminPin?.value || '').trim();
       if (pin.length < 4) return toast('PIN inválido');
       if (!(await verifyAdminPin(pin))) return toast('PIN incorrecto');
       unlockAdmin(5);
       closeModal(el.modalAdmin);
       toast('Admin desbloqueado');
-      renderAll();
     });
 
-    // pay modal changes
-    el.payMethod?.addEventListener('change', () => { touchActivity(); syncPayUI(); });
-    el.payGiven?.addEventListener('input', () => { touchActivity(); calcPayChange(); });
-    el.payCash?.addEventListener('input', () => { touchActivity(); calcPayChange(); });
-    el.payCard?.addEventListener('input', () => { touchActivity(); calcPayChange(); });
-    el.payCardOnly?.addEventListener('input', () => { touchActivity(); calcPayChange(); });
-
-    el.moneyBar?.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-add]');
-      if (!btn) return;
-      touchActivity();
-      const v = btn.dataset.add;
-      moneyAdd(v === 'exact' || v === 'clear' ? v : Number(v));
-    });
-
-    el.payKeypad?.addEventListener('click', (e) => {
+    // quick keypad
+    el.keypadQuick?.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-k]');
       if (!btn) return;
-      touchActivity();
-      const k = btn.dataset.k;
-      if (k === 'ok') {
-        // Default: Cobrar con impresión (si ON)
-        confirmPay({ doPrint: true });
-        return;
-      }
-      const inp = activePayInput();
-      keypadInsert(inp, k);
-      calcPayChange();
+      keypadInsertQuick(btn.dataset.k);
     });
+    el.btnQuickOk?.addEventListener('click', quickOk);
 
-    el.btnPayOk?.addEventListener('click', () => { touchActivity(); confirmPay({ doPrint: true }); });
-    el.btnPayNoPrint?.addEventListener('click', () => { touchActivity(); confirmPay({ doPrint: false }); });
+    // product
+    el.btnProductSave?.addEventListener('click', saveProductFromModal);
 
-    // quick modal
-    el.keypad?.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-k]');
-      if (!btn) return;
-      touchActivity();
-      const k = btn.dataset.k;
-      if (k === 'ok') return quickOk();
-      quickKeypadInsert(k);
-    });
-    el.btnQuickOk?.addEventListener('click', () => { touchActivity(); quickOk(); });
+    // categories
+    el.btnCreateCat?.addEventListener('click', createCatFromModal);
 
-    // product modal
-    el.btnProductSave?.addEventListener('click', () => { touchActivity(); saveProductFromModal(); });
+    // parked
+    el.btnParkNow?.addEventListener('click', () => parkNow(el.parkName?.value || ''));
 
-    // categories modal
-    el.btnCreateCat?.addEventListener('click', () => { touchActivity(); createCatFromModal(); });
-
-    // parked modal
-    el.btnParkNow?.addEventListener('click', () => { touchActivity(); cart.parkNow(el.parkName?.value || ''); });
-
-    // Z modal
-    el.zCashCounted?.addEventListener('input', () => { touchActivity(); updateZDiffUI(); });
-    el.btnZOk?.addEventListener('click', () => { touchActivity(); doZAction(); });
+    // Z
+    el.btnZOk?.addEventListener('click', closeDayWithZ);
+    el.zCashCounted?.addEventListener('input', updateZDiffLive);
 
     // email
-    el.btnEmailSend?.addEventListener('click', () => { touchActivity(); sendEmailMailto(); });
+    el.btnEmailSend?.addEventListener('click', sendEmailMailto);
   }
 
-  function bindVenta() {
-    el.btnQuickAmount?.addEventListener('click', () => { touchActivity(); openModal(el.modalQuick); });
-    el.btnPark?.addEventListener('click', () => { touchActivity(); cart.parkOpen(); });
+  function bindVenta(){
+    // Barcode enter (además de global scanner)
+    el.barcodeInput?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const code = (el.barcodeInput.value || '').trim();
+      el.barcodeInput.value = '';
+      if (!code) return;
+      finalizeScan(code);
+    });
 
+    // Search filters grid
+    el.searchInput?.addEventListener('input', debounce(renderProductGrid, 80));
+
+    // Pay method tabs
+    el.payTabs.forEach(p => p.addEventListener('click', () => {
+      el.payTabs.forEach(x => x.classList.remove('is-active'));
+      p.classList.add('is-active');
+      state.cart.payMethod = p.dataset.pay || 'efectivo';
+      save();
+      computeChange();
+      focusBarcodeSoon();
+    }));
+
+    // Entregado manual -> cambio inmediato (sin flash)
+    el.givenInput?.addEventListener('input', () => {
+      state.cart.given = parseMoney(el.givenInput.value);
+      save();
+      computeChange();
+    });
+
+    // Nota
+    el.noteName?.addEventListener('input', () => {
+      state.cart.noteName = el.noteName.value || '';
+      save();
+    });
+
+    // Billetes
+    el.billButtons.forEach(b => b.addEventListener('click', () => {
+      const v = b.dataset.bill;
+      if (v === 'exacto') return setExactGiven();
+      if (v === 'clear') return clearGiven();
+      addGiven(Number(v));
+    }));
+
+    // Imprimir (manual)
+    el.btnPrint?.addEventListener('click', () => {
+      const last = getLastSale();
+      if (last) return printSale(last);
+      const prev = buildPreviewSale();
+      if (!(prev.total > 0)) return toast('No hay ticket');
+      printSale(prev);
+    });
+
+    // Impresión ON/OFF toggle
+    el.btnPrintToggle?.addEventListener('click', () => {
+      state.settings.printEnabled = !state.settings.printEnabled;
+      save();
+      renderPrintState();
+      toast(`Impresión ${state.settings.printEnabled ? 'ON' : 'OFF'}`);
+    });
+
+    // Último
+    el.btnLastTicket?.addEventListener('click', () => {
+      const last = getLastSale();
+      if (!last) return toast('No hay último ticket');
+      printSale(last);
+    });
+
+    // Email
+    el.btnEmailTicket?.addEventListener('click', openEmailModal);
+
+    // Importe rápido (línea)
+    el.btnQuickAmount?.addEventListener('click', () => openModal(el.modalQuick));
+
+    // Aparcados
+    el.btnPark?.addEventListener('click', openParkModal);
+
+    // Anular ticket actual
+    el.btnVoid?.addEventListener('click', () => {
+      if (!state.cart.lines.length) return;
+      if (!confirm('¿Anular ticket actual?')) return;
+      cart.clearTicket();
+      audit('CART_VOID', {});
+      toast('Ticket anulado');
+      focusBarcodeSoon();
+    });
+
+    // Devolución
+    el.btnRefund?.addEventListener('click', refundLast);
+
+    // Cobrar
+    el.btnPay?.addEventListener('click', confirmSale);
+
+    // Cierre Z
+    el.btnOpenZ?.addEventListener('click', openZModal);
+
+    // Cat actions
     el.btnNewCategory?.addEventListener('click', () => {
-      touchActivity();
       requireAdminOrPrompt(() => {
         const name = prompt('Nombre de nueva categoría:', '');
         if (!name) return;
@@ -2199,129 +2306,28 @@ Local (GitHub Pages) · IVA incluido`;
       });
     });
 
-    el.btnManageCategories?.addEventListener('click', () => { touchActivity(); openCatsModal(); });
+    el.btnManageCategories?.addEventListener('click', openCatsModal);
 
-    el.btnAddProductInline?.addEventListener('click', () => { touchActivity(); openNewProduct(''); });
-
-    el.barcodeInput?.addEventListener('keydown', (e) => {
-      touchActivity();
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const code = (el.barcodeInput.value || '').trim();
-      el.barcodeInput.value = '';
-      if (!code) return;
-      finalizeScan(code);
-    });
-
-    el.searchInput?.addEventListener('input', debounce(() => renderProductGrid(), 80));
-
-    el.payTabs.forEach(p => p.addEventListener('click', () => {
-      touchActivity();
-      el.payTabs.forEach(x => x.classList.remove('is-active'));
-      p.classList.add('is-active');
-      cart.active.payMethod = p.dataset.pay || 'efectivo';
-      save();
-      renderTotals();
-      focusBarcodeSoon();
-    }));
-
-    el.givenInput?.addEventListener('input', () => { touchActivity(); cart.active.given = parseMoney(el.givenInput.value); save(); renderTotals(); });
-    el.noteName?.addEventListener('input', () => { touchActivity(); cart.active.noteName = el.noteName.value || ''; save(); });
-
-    el.btnVoid?.addEventListener('click', () => {
-      touchActivity();
-      if (!cart.active.lines.length) return;
-      if (!confirm('¿Anular ticket actual?')) return;
-      cart.clear();
-      audit('CART_VOID', {});
-      toast('Ticket anulado');
-    });
-
-    el.btnRefund?.addEventListener('click', () => {
-      touchActivity();
-      requireAdminOrPrompt(() => {
-        const last = getLastSale();
-        if (!last) return toast('No hay venta');
-        const refund = {
-          ...last,
-          id: uid(),
-          ticketNo: nextTicketNo(),
-          date: nowEs(),
-          ts: Date.now(),
-          dayKey: dateKeyLocal(),
-          payMethod: 'devolucion',
-          lines: (last.lines || []).map(l => ({ ...l, qty: -Math.abs(l.qty) })),
-          total: -Math.abs(last.total),
-          noteName: `DEVOLUCIÓN de ${last.ticketNo}`,
-          change: 0
-        };
-        state.openSales.push(refund);
-        state.lastSaleId = refund.id;
-        save();
-        audit('SALE_REFUND', { from: last.ticketNo, refund: refund.ticketNo, total: refund.total });
-        toast('Devolución registrada');
-        renderReports();
-      });
-    });
-
-    el.btnPay?.addEventListener('click', () => {
-      touchActivity();
-      if (state.settings.directPay) {
-        // direct pay = open pay modal still recommended for bills/keypad. We keep modal for PRO.
-        openPayModal();
-      } else {
-        openPayModal();
-      }
-    });
-
-    el.btnPrint?.addEventListener('click', () => {
-      touchActivity();
-      if (!state.settings.printOn) return toast('Impresión OFF');
-      const last = getLastSale();
-      if (!last) return toast('No hay ticket');
-      printSale(last);
-    });
-
-    el.btnLastTicket?.addEventListener('click', () => {
-      touchActivity();
-      if (!state.settings.printOn) return toast('Impresión OFF');
-      const last = getLastSale();
-      if (!last) return toast('No hay último ticket');
-      printSale(last);
-    });
-
-    el.btnEmailTicket?.addEventListener('click', () => { touchActivity(); openModal(el.modalEmail); });
-
-    // click outside inputs -> focus barcode
-    document.addEventListener('click', (e) => {
-      touchActivity();
-      const t = e.target;
-      if (!t) return;
-      if (t.closest('dialog')) return;
-      const tag = t.tagName?.toLowerCase();
-      if (['input', 'textarea', 'select', 'button'].includes(tag)) return;
-      focusBarcodeSoon();
-    });
+    // Add product inline
+    el.btnAddProductInline?.addEventListener('click', () => openNewProduct(''));
   }
 
-  function bindProductos() {
-    el.btnAddProduct?.addEventListener('click', () => { touchActivity(); openNewProduct(''); });
+  function bindProductos(){
+    el.btnAddProduct?.addEventListener('click', () => openNewProduct(''));
 
-    el.btnImportCsv?.addEventListener('click', () => { touchActivity(); el.fileCsv?.click(); });
+    el.btnImportCsv?.addEventListener('click', () => el.fileCsv?.click());
     el.fileCsv?.addEventListener('change', () => {
-      touchActivity();
       const f = el.fileCsv.files?.[0];
       if (!f) return;
       importProductsFromCSVFile(f);
       el.fileCsv.value = '';
     });
 
-    el.btnExportCsv?.addEventListener('click', () => { touchActivity(); exportProductsCSV(); });
-    el.btnBackupJson?.addEventListener('click', () => { touchActivity(); backupJSON(); });
+    el.btnExportCsv?.addEventListener('click', exportProductsCSV);
+    el.btnBackupJson?.addEventListener('click', backupJSON);
 
-    el.btnRestoreJson?.addEventListener('click', () => { touchActivity(); el.fileJson?.click(); });
+    el.btnRestoreJson?.addEventListener('click', () => el.fileJson?.click());
     el.fileJson?.addEventListener('change', () => {
-      touchActivity();
       const f = el.fileJson.files?.[0];
       if (!f) return;
       restoreJSONFromFile(f);
@@ -2329,34 +2335,33 @@ Local (GitHub Pages) · IVA incluido`;
     });
 
     const rer = debounce(renderProductsTable, 80);
-    el.prodSearchName?.addEventListener('input', () => { touchActivity(); rer(); });
-    el.prodSearchBarcode?.addEventListener('input', () => { touchActivity(); rer(); });
-    el.prodSearchCat?.addEventListener('change', () => { touchActivity(); rer(); });
+    el.prodSearchName?.addEventListener('input', rer);
+    el.prodSearchBarcode?.addEventListener('input', rer);
+    el.prodSearchCat?.addEventListener('change', rer);
   }
 
-  function bindReportes() {
-    el.btnExportSalesCsv?.addEventListener('click', () => { touchActivity(); exportSalesCSV(); });
+  function bindReportes(){
+    el.repPreset?.addEventListener('change', () => {
+      renderReports();
+    });
+    el.repFrom?.addEventListener('change', renderReports);
+    el.repTo?.addEventListener('change', renderReports);
 
-    el.btnCloseZ?.addEventListener('click', () => { touchActivity(); openZModal(); });
-
-    el.repPreset?.addEventListener('change', () => { touchActivity(); renderReports(); });
-    el.repFrom?.addEventListener('change', () => { touchActivity(); el.repPreset.value = 'custom'; renderReports(); });
-    el.repTo?.addEventListener('change', () => { touchActivity(); el.repPreset.value = 'custom'; renderReports(); });
+    el.btnExportSalesCsv?.addEventListener('click', exportSalesCSV);
+    el.btnExportZCsv?.addEventListener('click', exportZCSV);
   }
 
-  function bindAjustes() {
-    // init inputs
+  function bindAjustes(){
+    // init values
     if (el.setShopName) el.setShopName.value = state.settings.shopName;
     if (el.setShopSub) el.setShopSub.value = state.settings.shopSub;
     if (el.setBoxName) el.setBoxName.value = state.settings.boxName;
     if (el.setFooterText) el.setFooterText.value = state.settings.footerText;
 
-    if (el.setDirectPay) el.setDirectPay.value = state.settings.directPay ? '1' : '0';
-    if (el.setPrintOn) el.setPrintOn.value = state.settings.printOn ? '1' : '0';
-    if (el.setAutoPrint) el.setAutoPrint.value = state.settings.autoPrint ? '1' : '0';
-    if (el.setPrintZ) el.setPrintZ.value = state.settings.printZOnClose ? '1' : '0';
+    if (el.setPrintEnabled) el.setPrintEnabled.value = state.settings.printEnabled ? '1':'0';
+    if (el.setAutoPrint) el.setAutoPrint.value = state.settings.autoPrint ? '1':'0';
 
-    if (el.setAlwaysScan) el.setAlwaysScan.value = state.settings.alwaysScan ? '1' : '0';
+    if (el.setAlwaysScan) el.setAlwaysScan.value = state.settings.alwaysScan ? '1':'0';
     if (el.setScanSpeed) el.setScanSpeed.value = String(state.settings.scanSpeedMs || 35);
 
     if (el.setAutoLockMin) el.setAutoLockMin.value = String(state.settings.autoLockMin || 10);
@@ -2367,40 +2372,36 @@ Local (GitHub Pages) · IVA incluido`;
       state.settings.boxName = el.setBoxName?.value || state.settings.boxName;
       state.settings.footerText = el.setFooterText?.value || state.settings.footerText;
 
-      state.settings.directPay = (el.setDirectPay?.value || '0') === '1';
-
-      state.settings.printOn = (el.setPrintOn?.value || '1') === '1';
+      state.settings.printEnabled = (el.setPrintEnabled?.value || '1') === '1';
       state.settings.autoPrint = (el.setAutoPrint?.value || '0') === '1';
-      state.settings.printZOnClose = (el.setPrintZ?.value || '1') === '1';
 
       state.settings.alwaysScan = (el.setAlwaysScan?.value || '1') === '1';
-      state.settings.scanSpeedMs = Math.max(15, Math.min(140, Number(el.setScanSpeed?.value || 35)));
+      state.settings.scanSpeedMs = Math.max(15, Math.min(120, Number(el.setScanSpeed?.value || 35)));
 
       state.settings.autoLockMin = Math.max(1, Math.min(240, Number(el.setAutoLockMin?.value || 10)));
 
       save();
       renderHeader();
       toast('Ajustes guardados');
-    }, 140);
+    }, 160);
 
-    el.setShopName?.addEventListener('input', () => { touchActivity(); apply(); });
-    el.setShopSub?.addEventListener('input', () => { touchActivity(); apply(); });
-    el.setBoxName?.addEventListener('input', () => { touchActivity(); apply(); });
-    el.setFooterText?.addEventListener('input', () => { touchActivity(); apply(); });
+    el.setShopName?.addEventListener('input', apply);
+    el.setShopSub?.addEventListener('input', apply);
+    el.setBoxName?.addEventListener('input', apply);
+    el.setFooterText?.addEventListener('input', apply);
 
-    el.setDirectPay?.addEventListener('change', () => { touchActivity(); apply(); });
+    el.setPrintEnabled?.addEventListener('change', () => {
+      apply();
+      renderPrintState();
+    });
+    el.setAutoPrint?.addEventListener('change', apply);
 
-    el.setPrintOn?.addEventListener('change', () => { touchActivity(); apply(); renderPrintToggle(); });
-    el.setAutoPrint?.addEventListener('change', () => { touchActivity(); apply(); });
-    el.setPrintZ?.addEventListener('change', () => { touchActivity(); apply(); });
+    el.setAlwaysScan?.addEventListener('change', apply);
+    el.setScanSpeed?.addEventListener('input', apply);
+    el.setAutoLockMin?.addEventListener('input', apply);
 
-    el.setAlwaysScan?.addEventListener('change', () => { touchActivity(); apply(); renderHeader(); });
-    el.setScanSpeed?.addEventListener('input', () => { touchActivity(); apply(); });
-
-    el.setAutoLockMin?.addEventListener('input', () => { touchActivity(); apply(); });
-
+    // set admin pin (requires admin)
     el.setAdminPin?.addEventListener('change', async () => {
-      touchActivity();
       requireAdminOrPrompt(async () => {
         const pin = (el.setAdminPin.value || '').trim();
         if (!pin) return;
@@ -2412,65 +2413,61 @@ Local (GitHub Pages) · IVA incluido`;
       });
     });
 
-    el.btnCopyAbout?.addEventListener('click', () => { touchActivity(); copyAbout(); });
+    // about copy
+    el.btnCopyAbout?.addEventListener('click', copyAbout);
   }
 
-  function bindShortcuts() {
+  function bindShortcuts(){
     window.addEventListener('keydown', (e) => {
       touchActivity();
 
       const tag = document.activeElement?.tagName?.toLowerCase();
       const typing = (tag === 'input' || tag === 'textarea' || tag === 'select');
 
-      if (e.key === 'F4') { e.preventDefault(); openPayModal(); return; }
-      if (e.key === 'F2') { e.preventDefault(); openModal(el.modalQuick); return; }
+      if (e.key === 'F4'){ e.preventDefault(); confirmSale(); return; }
+      if (e.key === 'F2'){ e.preventDefault(); openModal(el.modalQuick); return; }
 
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape'){
         const open = document.querySelector('dialog[open]');
-        if (open) { e.preventDefault(); closeModal(open); return; }
-        if (!typing && cart.active.lines.length) {
-          if (confirm('¿Limpiar ticket actual?')) cart.clear();
+        if (open){ e.preventDefault(); closeModal(open); return; }
+        if (!typing && state.cart.lines.length){
+          if (confirm('¿Limpiar ticket actual?')) cart.clearTicket();
         }
         return;
       }
 
-      if ((e.key === 'Delete' || e.key === 'Supr') && !typing) {
-        if (!cart.active.lines.length) return;
+      if ((e.key === 'Delete' || e.key === 'Supr') && !typing){
+        if (!state.cart.lines.length) return;
         e.preventDefault();
-        cart.removeLine(cart.active.lines.length - 1);
+        cart.removeLine(state.cart.lines.length-1);
         return;
       }
 
-      if (!typing && (e.key === '+' || e.key === '=')) {
-        if (!cart.active.lines.length) return;
+      if (!typing && (e.key === '+' || e.key === '=')){
+        if (!state.cart.lines.length) return;
         e.preventDefault();
-        cart.inc(cart.active.lines.length - 1, +1);
+        cart.inc(state.cart.lines.length-1, +1);
         return;
       }
-      if (!typing && (e.key === '-' || e.key === '_')) {
-        if (!cart.active.lines.length) return;
+      if (!typing && (e.key === '-' || e.key === '_')){
+        if (!state.cart.lines.length) return;
         e.preventDefault();
-        cart.inc(cart.active.lines.length - 1, -1);
+        cart.inc(state.cart.lines.length-1, -1);
         return;
       }
     });
   }
 
-  function bindScannerGlobal() {
+  function bindScannerGlobal(){
     window.addEventListener('keydown', (e) => {
       if (!scanner.enabled()) return;
-
-      // ignore modifiers
       if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-      // ignore when modal open
       if (document.querySelector('dialog[open]')) return;
 
       const k = e.key;
 
-      // finalize on Enter
-      if (k === 'Enter') {
-        if (scanner.buf.length >= 4) {
+      if (k === 'Enter'){
+        if (scanner.buf.length >= 4){
           const code = scanner.buf;
           scanner.reset();
           finalizeScan(code);
@@ -2478,29 +2475,42 @@ Local (GitHub Pages) · IVA incluido`;
         return;
       }
 
-      // Accept typical barcode chars (some include letters)
-      if (k.length === 1 && /[0-9A-Za-z]/.test(k)) {
+      if (k.length === 1 && /[0-9A-Za-z]/.test(k)){
         scanner.pushChar(k);
       }
     });
   }
 
+  function bindGlobalClicks(){
+    // Mantener foco “natural” hacia barcode cuando clickas fuera (sin molestar inputs)
+    document.addEventListener('click', (e) => {
+      touchActivity();
+      const t = e.target;
+      if (!t) return;
+      if (t.closest('dialog')) return;
+      const tag = t.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return;
+      focusBarcodeSoon();
+    });
+
+    document.addEventListener('keydown', () => touchActivity());
+  }
+
   /* =========================
      INIT
   ========================== */
-  async function init() {
-    await ensureDefaultHashes();
+  async function init(){
+    ensureOpenDay();
     normalizeCategories();
+    await ensureDefaultHashes();
 
-    // Apply theme and defaults
-    setTheme(state.settings.theme || 'day');
-    renderPrintToggle();
+    // Inicializar método pago en UI
+    state.cart.payMethod = state.cart.payMethod || 'efectivo';
 
-    // Default report dates
-    if (el.repFrom && !el.repFrom.value) el.repFrom.value = dateKeyLocal();
-    if (el.repTo && !el.repTo.value) el.repTo.value = dateKeyLocal();
+    // Render
+    renderAll();
 
-    // Bind everything
+    // Bindings
     bindTabs();
     bindTop();
     bindModals();
@@ -2510,15 +2520,13 @@ Local (GitHub Pages) · IVA incluido`;
     bindAjustes();
     bindShortcuts();
     bindScannerGlobal();
+    bindGlobalClicks();
 
     // Default tab
     setTab('venta');
     focusBarcodeSoon();
 
-    // Render all
-    renderAll();
-
-    // Clock + admin lock refresh
+    // Clock + admin state refresh
     setInterval(() => {
       if (el.ticketDate) el.ticketDate.textContent = nowEs();
       renderAdminState();
@@ -2526,6 +2534,4 @@ Local (GitHub Pages) · IVA incluido`;
   }
 
   init();
-
 })();
-```
