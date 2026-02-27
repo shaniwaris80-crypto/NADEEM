@@ -1,41 +1,30 @@
-<!-- =========================
-TPV NADEEM LOCUTORIO — B/W PRO (PAQUETE PRO)
-Archivo: index.html
-- Escucha permanente de escaneo (barcode)
-- Categorías debajo de barcode/buscar + grid por categoría
-- Cobro PRO: billetes + teclado numérico + cambio (sin flash, sin ocultar)
-- Impresión ON/OFF (si OFF no abre impresión)
-- Cierre Z: imprime resumen Z + descuadre + cierra día (limpia ventas “abiertas” pero guarda en reportes)
-- Reportes: diarios/semanales/mensuales/personalizados
-- Crédito: footer + Ajustes → About plegable
-========================= -->
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
-  <title>TPV NADEEM LOCUTORIO — B/W PRO</title>
-  <link rel="stylesheet" href="./styles.css?v=pro-1.0" />
+  <title>TPV NADEEM — B/W PRO</title>
+  <link rel="stylesheet" href="./styles.css?v=PRO1" />
 </head>
 
 <body class="theme-day">
   <div class="app" id="app">
 
-    <!-- ===== TOP BAR ===== -->
+    <!-- TOP BAR -->
     <header class="topbar">
       <div class="brand">
         <div class="logo" aria-hidden="true">TPV</div>
         <div class="brand-text">
-          <div class="brand-title">TPV NADEEM LOCUTORIO</div>
-          <div class="brand-sub">B/W PRO · IVA incluido</div>
+          <div class="brand-title">TPV NADEEM</div>
+          <div class="brand-sub">B/W PRO · IVA incluido · <span class="mono" id="clockTop">—</span></div>
         </div>
       </div>
 
-      <nav class="tabs" role="tablist" aria-label="Secciones">
+      <nav class="tabs" role="tablist" aria-label="Secciones" id="tabsNav">
         <button class="tab is-active" role="tab" aria-selected="true" data-tab="venta">Venta</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="productos">Productos</button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="reportes">Reportes</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="reportes">Ventas / Reportes</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="ajustes">
           Ajustes <span class="pill">Admin</span>
         </button>
@@ -52,37 +41,42 @@ Archivo: index.html
           <span id="userLabel">CAJERO</span>
         </button>
 
-        <button class="btn btn-admin" id="btnAdmin" type="button" title="Acceso Admin (PIN)">
+        <button class="btn btn-admin" id="btnAdmin" type="button" title="PIN Admin">
           <span class="icon" aria-hidden="true">🔒</span>
           <span id="adminState">Admin</span>
         </button>
       </div>
     </header>
 
-    <!-- ===== MAIN ===== -->
+    <!-- KIOSK BAR (solo visible en modo kiosko) -->
+    <div class="kiosk-bar" id="kioskBar" hidden>
+      <div class="kiosk-left">
+        <span class="badge badge-ok">KIOSKO</span>
+        <span class="muted">Escaneo permanente activo</span>
+      </div>
+      <div class="kiosk-right">
+        <button class="btn btn-ghost" id="btnExitKiosk" type="button" title="Salir (requiere Admin)">Salir</button>
+      </div>
+    </div>
+
     <main class="main">
 
-      <!-- =========================
-           TAB: VENTA
-      ========================== -->
-      <section class="page is-active" data-page="venta">
+      <!-- ===== VENTA ===== -->
+      <section class="page is-active" data-page="venta" id="pageVenta">
         <div class="pos-grid">
 
-          <!-- ===== LEFT: CATEGORÍAS + PRODUCTOS ===== -->
+          <!-- IZQUIERDA -->
           <section class="panel panel-left">
             <div class="panel-head">
               <div class="panel-title">
                 <h2>Venta rápida</h2>
-                <p>
-                  <span class="scan-pill" id="scanPill" aria-hidden="true">SCAN</span>
-                  <span class="muted">Escucha permanente</span>
-                </p>
+                <p>Escaneo instantáneo · categorías · productos</p>
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-soft" id="btnQuickAmount" type="button">+ Importe rápido</button>
-                <button class="btn btn-soft" id="btnPark" type="button" title="Aparcados">
-                  Aparcados <span class="badge badge-mini" id="parkBadge" hidden>0</span>
+                <button class="btn btn-soft" id="btnQuickAmount" type="button">+ Importe</button>
+                <button class="btn btn-soft" id="btnPark" type="button" title="Aparcar / Recuperar">
+                  Aparcar <span class="badge badge-mini" id="parkBadge" hidden>0</span>
                 </button>
               </div>
             </div>
@@ -91,33 +85,34 @@ Archivo: index.html
               <div class="field-row">
                 <label class="field">
                   <span>Escanear / Barcode</span>
-                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea (se añade al instante)" />
-                  <small>El sistema escucha aunque no estés en el input (lector tipo teclado).</small>
+                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (escucha permanente)" />
+                  <small>El lector añade al instante. Si no existe → alta rápida.</small>
                 </label>
 
                 <label class="field">
                   <span>Buscar producto</span>
                   <input id="searchInput" autocomplete="off" placeholder="Nombre o barcode…" />
-                  <small>Filtra los productos de la categoría seleccionada.</small>
+                  <small>Filtra dentro de la categoría seleccionada.</small>
                 </label>
               </div>
 
-              <!-- CATEGORÍAS (debajo de barcode/buscar) -->
-              <div class="cat-bar">
-                <div class="cat-title">Categorías</div>
-                <div class="cat-actions">
-                  <button class="btn btn-ghost btn-small" id="btnNewCategory" type="button">+ Categoría</button>
-                  <button class="btn btn-ghost btn-small" id="btnManageCategories" type="button">Gestionar</button>
+              <!-- CATEGORÍAS (debajo como pediste) -->
+              <div class="cat-row">
+                <div class="cat-head">
+                  <div class="cat-title">Categorías</div>
+                  <div class="cat-actions">
+                    <button class="btn btn-ghost btn-small" id="btnAddCategory" type="button" title="Crear categoría (Admin)">+ Cat</button>
+                    <button class="btn btn-ghost btn-small" id="btnRenameCategory" type="button" title="Renombrar categoría (Admin)">Renombrar</button>
+                  </div>
                 </div>
+                <div class="cats" id="catsBar" aria-label="Categorías"></div>
               </div>
-
-              <div class="cat-chips" id="catChips"></div>
             </div>
 
             <div class="section-title">
-              <span>Productos</span>
+              <span id="catSelectedLabel">Productos</span>
               <div class="section-actions">
-                <button class="btn btn-ghost" id="btnAddProductInline" type="button">+ Producto</button>
+                <button class="btn btn-ghost" id="btnAddProductInline" type="button" title="Nuevo producto (Admin)">+ Producto</button>
               </div>
             </div>
 
@@ -126,16 +121,16 @@ Archivo: index.html
             <div class="hint">
               <div class="hint-title">Atajos</div>
               <div class="hint-body">
+                <span class="kbd">F2</span> Importe ·
                 <span class="kbd">F4</span> Cobrar ·
-                <span class="kbd">F2</span> Importe rápido ·
                 <span class="kbd">Supr</span> Borrar última ·
-                <span class="kbd">Esc</span> Limpiar/Salir ·
+                <span class="kbd">Esc</span> Cerrar modales / limpiar ·
                 <span class="kbd">+</span>/<span class="kbd">-</span> Qty última
               </div>
             </div>
           </section>
 
-          <!-- ===== RIGHT: TICKET + COBRO ===== -->
+          <!-- DERECHA -->
           <section class="panel panel-right">
             <div class="panel-head">
               <div class="panel-title">
@@ -144,15 +139,9 @@ Archivo: index.html
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último">Último</button>
-                <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar ticket por email">Email</button>
-
-                <!-- Impresión ON/OFF -->
-                <button class="btn btn-soft" id="btnPrintToggle" type="button" title="Impresión ON/OFF">
-                  Impresión: <span class="mono" id="printState">ON</span>
-                </button>
-
-                <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir ticket (80mm)">Imprimir</button>
+                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Último ticket">Último</button>
+                <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar por correo">Email</button>
+                <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir 80mm">Imprimir</button>
               </div>
             </div>
 
@@ -160,7 +149,7 @@ Archivo: index.html
               <div class="ticket-head">
                 <div class="ticket-shop">
                   <div class="ticket-shop-name" id="shopName">MALIK AHMAD NADEEM</div>
-                  <div class="ticket-shop-sub" id="shopSub">C/ Vitoria 139 · 09007 Burgos · Tlf 632 480 316 · CIF 72374062P</div>
+                  <div class="ticket-shop-sub" id="shopSub">CALLE VITORIA 139 · 09007 BURGOS · TLF 632 480 316 · CIF 72374062P</div>
                 </div>
                 <div class="ticket-meta">
                   <div><span class="muted">Caja:</span> <span class="mono" id="posBox">CAJA-1</span></div>
@@ -215,62 +204,41 @@ Archivo: index.html
                     </label>
                     <label class="field">
                       <span>Nombre / nota (opcional)</span>
-                      <input id="noteName" placeholder="Ej: Cliente / Nota…" />
+                      <input id="noteName" placeholder="Cliente / Mesa / Nota…" />
                     </label>
                   </div>
 
-                  <!-- Billetes rápidos (en panel, no modal) -->
-                  <div class="bill-row" aria-label="Billetes rápidos">
-                    <button class="bill" type="button" data-bill="5">+5</button>
-                    <button class="bill" type="button" data-bill="10">+10</button>
-                    <button class="bill" type="button" data-bill="20">+20</button>
-                    <button class="bill" type="button" data-bill="50">+50</button>
-                    <button class="bill bill-fn" type="button" data-bill="exacto">Exacto</button>
-                    <button class="bill bill-fn" type="button" data-bill="clear">C</button>
+                  <div class="mini-row">
+                    <button class="btn btn-soft" id="btnNumpadGiven" type="button">Teclado</button>
+                    <div class="muted small">Tip: F4 cobrar · F2 importe</div>
                   </div>
                 </div>
 
                 <div class="cta-row">
                   <button class="btn btn-danger" id="btnVoid" type="button">Anular</button>
-                  <button class="btn btn-soft" id="btnRefund" type="button" title="Requiere PIN admin">Devolución</button>
+                  <button class="btn btn-soft" id="btnRefund" type="button" title="Requiere Admin">Devolución</button>
                   <button class="btn btn-primary" id="btnPay" type="button">Cobrar</button>
                 </div>
 
-                <div class="mini-note muted">Ticket 80mm · IVA incluido · Impresión ON/OFF</div>
+                <div class="mini-note muted">Ticket 80mm · Email (mailto) · Escaneo permanente</div>
               </div>
             </div>
-
-            <!-- Acceso rápido a Cierre Z desde venta -->
-            <div class="card">
-              <div class="zbar">
-                <div>
-                  <div class="line-name">Cierre del día (Z)</div>
-                  <div class="line-sub muted">Imprime resumen Z · descuadre ± · cierra día</div>
-                </div>
-                <button class="btn btn-admin" id="btnOpenZ" type="button">Cierre Z</button>
-              </div>
-            </div>
-
           </section>
         </div>
       </section>
 
-      <!-- =========================
-           TAB: PRODUCTOS
-      ========================== -->
+      <!-- ===== PRODUCTOS ===== -->
       <section class="page" data-page="productos">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Productos</h2>
-              <p>Alta, edición, categorías, import/export (CSV/JSON).</p>
+              <p>Alta (barcode primero) · Categorías · Favoritos</p>
             </div>
             <div class="page-actions">
-              <button class="btn btn-soft" id="btnImportCsv" type="button">Importar CSV</button>
-              <button class="btn btn-soft" id="btnExportCsv" type="button">Exportar CSV</button>
-              <button class="btn btn-soft" id="btnBackupJson" type="button">Backup JSON</button>
-              <button class="btn btn-soft" id="btnRestoreJson" type="button">Restaurar JSON</button>
-              <button class="btn btn-primary" id="btnAddProduct" type="button">+ Nuevo producto</button>
+              <button class="btn btn-soft" id="btnExportBackup" type="button">Backup JSON</button>
+              <button class="btn btn-soft" id="btnImportBackup" type="button">Import JSON</button>
+              <button class="btn btn-primary" id="btnAddProduct" type="button">+ Nuevo</button>
             </div>
           </div>
 
@@ -282,7 +250,7 @@ Archivo: index.html
               </label>
               <label class="field">
                 <span>Buscar por barcode</span>
-                <input id="prodSearchBarcode" inputmode="numeric" placeholder="Escanear / escribir barcode…" />
+                <input id="prodSearchBarcode" inputmode="numeric" placeholder="Escanear / escribir…" />
               </label>
               <label class="field">
                 <span>Categoría</span>
@@ -295,76 +263,62 @@ Archivo: index.html
             <div class="trow thead">
               <div class="tcell">Producto</div>
               <div class="tcell">Barcode</div>
-              <div class="tcell tcell-right">PVP (IVA incl.)</div>
-              <div class="tcell tcell-right">Compra (opc.)</div>
               <div class="tcell">Categoría</div>
+              <div class="tcell tcell-right">PVP</div>
+              <div class="tcell tcell-right">Compra</div>
               <div class="tcell tcell-center">Fav</div>
               <div class="tcell tcell-right">Acciones</div>
             </div>
           </div>
+
+          <input type="file" id="fileImport" accept="application/json" hidden />
         </div>
       </section>
 
-      <!-- =========================
-           TAB: REPORTES
-      ========================== -->
+      <!-- ===== REPORTES / Z ===== -->
       <section class="page" data-page="reportes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
-              <h2>Reportes</h2>
-              <p>Diarios, semanales, mensuales, rango personalizado. Ventas “abiertas” se limpian al cerrar día.</p>
+              <h2>Ventas / Reportes</h2>
+              <p>Resumen del periodo abierto + Historial de Cierres Z</p>
             </div>
             <div class="page-actions">
-              <button class="btn btn-soft" id="btnExportSalesCsv" type="button">Exportar ventas CSV</button>
-              <button class="btn btn-soft" id="btnExportZCsv" type="button">Exportar cierres Z CSV</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="field-row">
-              <label class="field">
-                <span>Rango</span>
-                <select id="repPreset">
-                  <option value="hoy">Hoy</option>
-                  <option value="ayer">Ayer</option>
-                  <option value="semana">Esta semana</option>
-                  <option value="mes">Este mes</option>
-                  <option value="personal">Personalizado</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Desde</span>
-                <input id="repFrom" type="date" />
-              </label>
-              <label class="field">
-                <span>Hasta</span>
-                <input id="repTo" type="date" />
-              </label>
+              <button class="btn btn-soft" id="btnPrintX" type="button">Imprimir X</button>
+              <button class="btn btn-admin" id="btnCloseZ" type="button">Cierre Z</button>
             </div>
           </div>
 
           <div class="grid-2">
             <div class="card">
-              <h3>Resumen</h3>
+              <h3>Periodo abierto</h3>
               <div class="stat-grid">
-                <div class="stat"><div class="stat-label">Tickets</div><div class="stat-value mono" id="statTickets">0</div></div>
-                <div class="stat"><div class="stat-label">Total</div><div class="stat-value mono" id="statTotal">0,00 €</div></div>
-                <div class="stat"><div class="stat-label">Efectivo</div><div class="stat-value mono" id="statCash">0,00 €</div></div>
-                <div class="stat"><div class="stat-label">Tarjeta</div><div class="stat-value mono" id="statCard">0,00 €</div></div>
+                <div class="stat">
+                  <div class="stat-label">Tickets</div>
+                  <div class="stat-value mono" id="statTickets">0</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-label">Total</div>
+                  <div class="stat-value mono" id="statTotal">0,00 €</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-label">Efectivo</div>
+                  <div class="stat-value mono" id="statCash">0,00 €</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-label">Tarjeta</div>
+                  <div class="stat-value mono" id="statCard">0,00 €</div>
+                </div>
               </div>
-
-              <div class="hint" style="margin:14px 0 0;">
-                <div class="hint-title">Top productos</div>
-                <div class="hint-body muted" id="topProducts">—</div>
+              <div class="muted small" style="margin-top:10px;">
+                X = informe sin limpiar · Z = imprime y pone a 0 (guarda solo totales en Historial Z).
               </div>
             </div>
 
             <div class="card">
-              <h3>Cierres Z</h3>
-              <div class="chart-placeholder">
-                <div class="muted" id="zInfo">Sin cierres.</div>
-              </div>
+              <h3>Historial Z</h3>
+              <div class="muted small">Reimprime cualquier cierre Z.</div>
+              <div class="z-list" id="zList"></div>
             </div>
           </div>
 
@@ -380,15 +334,13 @@ Archivo: index.html
         </div>
       </section>
 
-      <!-- =========================
-           TAB: AJUSTES
-      ========================== -->
+      <!-- ===== AJUSTES ===== -->
       <section class="page" data-page="ajustes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Negocio, caja, impresión, escáner, seguridad.</p>
+              <p>Admin PIN · Kiosko · Ticket 80mm · Backup</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -397,7 +349,7 @@ Archivo: index.html
 
           <div class="grid-2">
             <div class="card">
-              <h3>Datos de tienda</h3>
+              <h3>Negocio</h3>
               <div class="field-row">
                 <label class="field">
                   <span>Nombre</span>
@@ -421,16 +373,8 @@ Archivo: index.html
             </div>
 
             <div class="card">
-              <h3>Impresión</h3>
+              <h3>Modo TPV</h3>
               <div class="field-row">
-                <label class="field">
-                  <span>Impresión (ON/OFF)</span>
-                  <select id="setPrintEnabled">
-                    <option value="1">ON</option>
-                    <option value="0">OFF</option>
-                  </select>
-                  <small>Si está OFF, no se abrirá el panel de impresión.</small>
-                </label>
                 <label class="field">
                   <span>Auto-imprimir tras cobrar</span>
                   <select id="setAutoPrint">
@@ -438,82 +382,98 @@ Archivo: index.html
                     <option value="1">Sí</option>
                   </select>
                 </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="card">
-              <h3>Escáner</h3>
-              <div class="field-row">
                 <label class="field">
-                  <span>Siempre escuchar escáner</span>
-                  <select id="setAlwaysScan">
-                    <option value="1">Sí</option>
+                  <span>Escaneo “agresivo”</span>
+                  <select id="setAggressiveScan">
+                    <option value="1">Sí (recomendado)</option>
                     <option value="0">No</option>
                   </select>
                 </label>
-                <label class="field">
-                  <span>Velocidad escáner (ms)</span>
-                  <input id="setScanSpeed" inputmode="numeric" placeholder="35" />
-                  <small>Recomendado 30–45 (más bajo = más “lector”).</small>
-                </label>
               </div>
-            </div>
 
-            <div class="card">
-              <h3>Seguridad</h3>
               <div class="field-row">
                 <label class="field">
-                  <span>PIN Admin (cambiar)</span>
-                  <input id="setAdminPin" type="password" inputmode="numeric" placeholder="••••" />
-                  <small>Por defecto: 1234</small>
+                  <span>Modo Kiosko</span>
+                  <select id="setKiosk">
+                    <option value="0">Off</option>
+                    <option value="1">On</option>
+                  </select>
+                  <small>En On: intenta fullscreen y bloquea navegación rápida.</small>
                 </label>
                 <label class="field">
-                  <span>Auto-bloqueo admin (min)</span>
-                  <input id="setAutoLockMin" inputmode="numeric" placeholder="10" />
+                  <span>Acciones</span>
+                  <div class="btn-row">
+                    <button class="btn btn-soft" id="btnEnterKiosk" type="button">Entrar Kiosko</button>
+                    <button class="btn btn-soft" id="btnExitKiosk2" type="button">Salir Kiosko</button>
+                  </div>
                 </label>
+              </div>
+
+              <div class="hint">
+                <div class="hint-title">Nota</div>
+                <div class="hint-body">El navegador no puede bloquear Alt+Tab, pero para tienda va perfecto.</div>
               </div>
             </div>
           </div>
 
-          <!-- ABOUT PLEGABLE -->
           <div class="card">
-            <details class="about" id="aboutBox">
-              <summary class="about-summary">
-                <span>About</span>
-                <span class="muted small">TPV NADEEM LOCUTORIO</span>
-              </summary>
+            <h3>Seguridad</h3>
+            <div class="field-row">
+              <label class="field">
+                <span>PIN Admin (cambiar)</span>
+                <input id="setAdminPin" type="password" inputmode="numeric" placeholder="••••" />
+                <small>Por defecto: 1234</small>
+              </label>
+              <label class="field">
+                <span>Bloqueo por tiempo</span>
+                <select id="setAdminMinutes">
+                  <option value="3">3 min</option>
+                  <option value="5" selected>5 min</option>
+                  <option value="10">10 min</option>
+                </select>
+              </label>
+            </div>
 
-              <div class="about-body">
-                <div class="about-line"><strong>Software:</strong> TPV NADEEM LOCUTORIO</div>
-                <div class="about-line"><strong>Versión:</strong> <span class="mono" id="aboutVersion">pro-1.0</span></div>
-                <div class="about-line"><strong>Autor:</strong> Made by Arslan Waris · All rights reserved</div>
-                <div class="about-line"><strong>Modo:</strong> Local (GitHub Pages) · IVA incluido</div>
-                <div class="about-actions">
-                  <button class="btn btn-soft" id="btnCopyAbout" type="button">Copiar info</button>
+            <div class="field-row">
+              <label class="field">
+                <span>Backup</span>
+                <div class="btn-row">
+                  <button class="btn btn-soft" id="btnBackupNow" type="button">Exportar JSON</button>
+                  <button class="btn btn-soft" id="btnRestoreNow" type="button">Importar JSON</button>
                 </div>
-              </div>
-            </details>
+              </label>
+              <label class="field">
+                <span>Reset total</span>
+                <button class="btn btn-danger" id="btnFactoryReset" type="button">Borrar todo</button>
+                <small>⚠️ Esto borra productos, categorías, ventas y Z.</small>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>About</h3>
+            <div class="muted small">
+              TPV NADEEM — B/W PRO · Opción 1 (Local) · vPRO1<br/>
+              <span class="mono">Made by Arslan Waris · All rights reserved</span>
+            </div>
           </div>
         </div>
       </section>
 
     </main>
 
-    <!-- ===== FOOTER ===== -->
     <footer class="footer">
       <div class="footer-left">
         <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right muted credit">
-        Made by Arslan Waris · All rights reserved
+      <div class="footer-right muted">
+        <span class="mono" id="version">vPRO1</span>
       </div>
     </footer>
   </div>
 
-  <!-- PRINT AREA 80MM -->
+  <!-- PRINT AREA (80mm) -->
   <div id="printArea" class="print-area" aria-hidden="true"></div>
 
   <!-- TOAST -->
@@ -522,16 +482,14 @@ Archivo: index.html
   <!-- BACKDROP -->
   <div class="modal-backdrop" id="backdrop" hidden></div>
 
-  <!-- Hidden file inputs -->
-  <input id="fileCsv" type="file" accept=".csv,text/csv" hidden />
-  <input id="fileJson" type="file" accept=".json,application/json" hidden />
+  <!-- ===== MODALS ===== -->
 
   <!-- LOGIN -->
   <dialog class="modal" id="modalLogin" aria-label="Login">
     <div class="modal-head">
       <div>
         <div class="modal-title">Login caja</div>
-        <div class="muted small">Usuario + contraseña</div>
+        <div class="muted small">Usuario + contraseña (local)</div>
       </div>
       <button class="icon-btn" data-close="modalLogin" aria-label="Cerrar">✕</button>
     </div>
@@ -574,33 +532,40 @@ Archivo: index.html
     </div>
   </dialog>
 
-  <!-- IMPORTE RÁPIDO (TECLADO NUMÉRICO) -->
-  <dialog class="modal" id="modalQuick" aria-label="Importe rápido">
+  <!-- IMPORTE RÁPIDO + NUMPAD -->
+  <dialog class="modal modal-wide" id="modalQuick" aria-label="Importe rápido">
     <div class="modal-head">
       <div>
         <div class="modal-title">Importe rápido</div>
-        <div class="muted small">Añade una línea manual al ticket</div>
+        <div class="muted small">Teclado numérico en pantalla</div>
       </div>
       <button class="icon-btn" data-close="modalQuick" aria-label="Cerrar">✕</button>
     </div>
 
-    <div class="modal-body">
-      <div class="field-row">
+    <div class="modal-body split">
+      <div>
         <label class="field">
           <span>Importe (€)</span>
           <input id="quickAmount" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
           <span>Nombre (opcional)</span>
-          <input id="quickName" placeholder="Ej: Bolsa, Servicio…" />
+          <input id="quickName" placeholder="Ej: Bolsa, Servicio, Ajuste…" />
         </label>
+
+        <div class="hint">
+          <div class="hint-title">Tip</div>
+          <div class="hint-body">Atajo: <span class="kbd">F2</span></div>
+        </div>
       </div>
 
-      <div class="keypad" id="keypadQuick">
-        <button class="key" data-k="7">7</button><button class="key" data-k="8">8</button><button class="key" data-k="9">9</button><button class="key key-fn" data-k="bk">⌫</button>
-        <button class="key" data-k="4">4</button><button class="key" data-k="5">5</button><button class="key" data-k="6">6</button><button class="key key-fn" data-k="c">C</button>
-        <button class="key" data-k="1">1</button><button class="key" data-k="2">2</button><button class="key" data-k="3">3</button><button class="key key-fn" data-k=",">,</button>
-        <button class="key key-wide" data-k="0">0</button><button class="key" data-k="00">00</button><button class="key key-ok" data-k="ok">OK</button>
+      <div class="numpad" id="numpadQuick" data-target="quickAmount">
+        <div class="numpad-grid">
+          <button class="np" data-k="7">7</button><button class="np" data-k="8">8</button><button class="np" data-k="9">9</button><button class="np np-fn" data-k="back">⌫</button>
+          <button class="np" data-k="4">4</button><button class="np" data-k="5">5</button><button class="np" data-k="6">6</button><button class="np np-fn" data-k="clear">C</button>
+          <button class="np" data-k="1">1</button><button class="np" data-k="2">2</button><button class="np" data-k="3">3</button><button class="np np-ok" data-k="ok">OK</button>
+          <button class="np np-wide" data-k="0">0</button><button class="np" data-k=",">,</button><button class="np np-fn" data-k="plus10">+10</button>
+        </div>
       </div>
     </div>
 
@@ -610,12 +575,83 @@ Archivo: index.html
     </div>
   </dialog>
 
+  <!-- COBRO (con numpad para entregado y mixto) -->
+  <dialog class="modal modal-wide" id="modalPay" aria-label="Cobro">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Cobrar</div>
+        <div class="muted small">Efectivo / Tarjeta / Mixto</div>
+      </div>
+      <button class="icon-btn" data-close="modalPay" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-body split">
+      <div>
+        <div class="pay-big">
+          <div class="muted">Total</div>
+          <div class="pay-total mono" id="payTotal">0,00 €</div>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Método</span>
+            <select id="payMethod">
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="mixto">Mixto</option>
+            </select>
+          </label>
+          <label class="field" id="payGivenWrap">
+            <span>Entregado</span>
+            <input id="payGiven" inputmode="decimal" placeholder="0,00" />
+          </label>
+          <label class="field" id="payChangeWrap">
+            <span>Cambio</span>
+            <input id="payChange" disabled placeholder="0,00" />
+          </label>
+        </div>
+
+        <div class="field-row" id="paySplitWrap" hidden>
+          <label class="field">
+            <span>Efectivo (mixto)</span>
+            <input id="payCash" inputmode="decimal" placeholder="0,00" />
+          </label>
+          <label class="field">
+            <span>Tarjeta (mixto)</span>
+            <input id="payCard" inputmode="decimal" placeholder="0,00" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Nombre / nota</span>
+          <input id="payNote" placeholder="Cliente / nota…" />
+        </label>
+
+        <div class="muted small">OK = confirmar venta · imprime si está activado</div>
+      </div>
+
+      <div class="numpad" id="numpadPay" data-target="payGiven">
+        <div class="numpad-grid">
+          <button class="np" data-k="7">7</button><button class="np" data-k="8">8</button><button class="np" data-k="9">9</button><button class="np np-fn" data-k="back">⌫</button>
+          <button class="np" data-k="4">4</button><button class="np" data-k="5">5</button><button class="np" data-k="6">6</button><button class="np np-fn" data-k="clear">C</button>
+          <button class="np" data-k="1">1</button><button class="np" data-k="2">2</button><button class="np" data-k="3">3</button><button class="np np-ok" data-k="ok">OK</button>
+          <button class="np np-wide" data-k="0">0</button><button class="np" data-k=",">,</button><button class="np np-fn" data-k="full">TOTAL</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalPay" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="btnPayOk" type="button">Confirmar</button>
+    </div>
+  </dialog>
+
   <!-- PRODUCTO -->
   <dialog class="modal" id="modalProduct" aria-label="Producto">
     <div class="modal-head">
       <div>
-        <div class="modal-title" id="prodModalTitle">Producto</div>
-        <div class="muted small">Barcode → nombre → precios → categoría</div>
+        <div class="modal-title" id="prodModalTitle">Nuevo producto</div>
+        <div class="muted small">Barcode → nombre → categoría → precios</div>
       </div>
       <button class="icon-btn" data-close="modalProduct" aria-label="Cerrar">✕</button>
     </div>
@@ -634,20 +670,9 @@ Archivo: index.html
 
       <div class="field-row">
         <label class="field">
-          <span>PVP (IVA incl.)</span>
-          <input id="prodPrice" inputmode="decimal" placeholder="0,00" />
-        </label>
-        <label class="field">
-          <span>Compra (opcional)</span>
-          <input id="prodCost" inputmode="decimal" placeholder="0,00" />
-        </label>
-        <label class="field">
           <span>Categoría</span>
           <select id="prodCat"></select>
         </label>
-      </div>
-
-      <div class="field-row">
         <label class="field">
           <span>Favorito</span>
           <select id="prodFav">
@@ -655,12 +680,16 @@ Archivo: index.html
             <option value="1">Sí</option>
           </select>
         </label>
+      </div>
+
+      <div class="field-row">
         <label class="field">
-          <span>Unidad</span>
-          <select id="prodUnit">
-            <option value="ud">Ud</option>
-            <option value="kg">Kg</option>
-          </select>
+          <span>PVP (IVA incl.)</span>
+          <input id="prodPrice" inputmode="decimal" placeholder="0,00" />
+        </label>
+        <label class="field">
+          <span>Compra (opcional)</span>
+          <input id="prodCost" inputmode="decimal" placeholder="0,00" />
         </label>
       </div>
     </div>
@@ -668,98 +697,6 @@ Archivo: index.html
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalProduct" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnProductSave" type="button">Guardar</button>
-    </div>
-  </dialog>
-
-  <!-- CATEGORÍAS -->
-  <dialog class="modal" id="modalCats" aria-label="Categorías">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Categorías</div>
-        <div class="muted small">Crear / Renombrar / Borrar (Admin)</div>
-      </div>
-      <button class="icon-btn" data-close="modalCats" aria-label="Cerrar">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <div class="field-row">
-        <label class="field">
-          <span>Nueva categoría</span>
-          <input id="newCatName" placeholder="Ej: Bebidas…" />
-        </label>
-        <div class="field">
-          <span>&nbsp;</span>
-          <button class="btn btn-primary" id="btnCreateCat" type="button">Crear</button>
-        </div>
-      </div>
-
-      <div class="cat-list" id="catList"></div>
-    </div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modalCats" type="button">Cerrar</button>
-    </div>
-  </dialog>
-
-  <!-- APARCADOS -->
-  <dialog class="modal" id="modalPark" aria-label="Aparcados">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Aparcados</div>
-        <div class="muted small">Guardar y recuperar tickets</div>
-      </div>
-      <button class="icon-btn" data-close="modalPark" aria-label="Cerrar">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="field-row">
-        <label class="field">
-          <span>Nombre (opcional)</span>
-          <input id="parkName" placeholder="Ej: Cliente / Mesa / Nota…" />
-        </label>
-        <div class="field">
-          <span>&nbsp;</span>
-          <button class="btn btn-primary" id="btnParkNow" type="button">Aparcar actual</button>
-        </div>
-      </div>
-      <div class="park-list" id="parkList"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modalPark" type="button">Cerrar</button>
-    </div>
-  </dialog>
-
-  <!-- CIERRE Z -->
-  <dialog class="modal" id="modalZ" aria-label="Cierre Z">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Cierre Z</div>
-        <div class="muted small">Imprime Z · descuadre ± · cierra día</div>
-      </div>
-      <button class="icon-btn" data-close="modalZ" aria-label="Cerrar">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="hint" style="margin:0;">
-        <div class="hint-title">Esperado</div>
-        <div class="hint-body" id="zExpected">—</div>
-      </div>
-      <div class="field-row" style="margin-top:12px;">
-        <label class="field">
-          <span>Efectivo contado (€)</span>
-          <input id="zCashCounted" inputmode="decimal" placeholder="0,00" />
-        </label>
-        <label class="field">
-          <span>Nota (opcional)</span>
-          <input id="zNote" placeholder="Ej: descuadre por…" />
-        </label>
-      </div>
-      <div class="hint" style="margin:0;">
-        <div class="hint-title">Descuadre</div>
-        <div class="hint-body" id="zDiff">—</div>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modalZ" type="button">Cancelar</button>
-      <button class="btn btn-primary" id="btnZOk" type="button">Imprimir + Cerrar día</button>
     </div>
   </dialog>
 
@@ -772,6 +709,7 @@ Archivo: index.html
       </div>
       <button class="icon-btn" data-close="modalEmail" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <label class="field">
         <span>Email</span>
@@ -782,12 +720,64 @@ Archivo: index.html
         <textarea id="emailMsg" rows="4" placeholder="Mensaje extra…"></textarea>
       </label>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalEmail" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnEmailSend" type="button">Abrir email</button>
     </div>
   </dialog>
 
-  <script src="./app.js?v=pro-1.0" defer></script>
+  <!-- CATEGORÍA (crear/renombrar) -->
+  <dialog class="modal" id="modalCategory" aria-label="Categorías">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="catModalTitle">Categoría</div>
+        <div class="muted small">Crear / Renombrar</div>
+      </div>
+      <button class="icon-btn" data-close="modalCategory" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <label class="field">
+        <span id="catFieldLabel">Nombre</span>
+        <input id="catName" placeholder="Ej: Bebidas" />
+      </label>
+      <div class="hint">
+        <div class="hint-title">Nota</div>
+        <div class="hint-body">Renombrar cambia también la categoría de los productos asignados.</div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalCategory" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="btnCategoryOk" type="button">Guardar</button>
+    </div>
+  </dialog>
+
+  <!-- CIERRE Z CONFIRM -->
+  <dialog class="modal" id="modalZ" aria-label="Cierre Z">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Cierre Z</div>
+        <div class="muted small">Imprime reporte y pone a 0</div>
+      </div>
+      <button class="icon-btn" data-close="modalZ" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="z-preview" id="zPreview">—</div>
+      <div class="hint">
+        <div class="hint-title">Importante</div>
+        <div class="hint-body">Después de imprimir, el periodo abierto se limpia y queda a 0. El cierre se guarda en Historial Z.</div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalZ" type="button">Cancelar</button>
+      <button class="btn btn-admin" id="btnZOk" type="button">Imprimir y cerrar</button>
+    </div>
+  </dialog>
+
+  <script src="./app.js?v=PRO1" defer></script>
 </body>
 </html>
