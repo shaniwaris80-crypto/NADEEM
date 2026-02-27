@@ -1,12 +1,16 @@
 /* =========================
-TPV TIENDA — B/W PRO (OPCIÓN 1 / GITHUB)
-Archivo: app.js  (REGENERADO MEJORADO)
-- POS real (barcode, favoritos, carrito, importe rápido)
-- Cobro modal + cobro directo opcional
-- Ticket 80mm con printArea dedicado
-- Email ticket por mailto
-- Login local (cajero/admin) + PIN admin (hash)
-- Ajustes conectados (tienda/caja/pie, toggles)
+TPV TIENDA — B/W PRO — PAQUETE PRO (OPCIÓN 1 / GITHUB)
+Archivo: app.js
+Incluye:
+- Escaneo GLOBAL (siempre atento, aunque no esté el input enfocado)
+- Categorías: crear/renombrar/borrar + chips dinámicos + selects dinámicos
+- Importe rápido: teclado numérico en pantalla
+- Aparcar múltiples tickets (lista, renombrar, recuperar, borrar)
+- Ticket 80mm (printArea) + email mailto
+- Backup JSON + import JSON
+- Import/Export CSV productos
+- Cierre Z (arqueo) + listado cierres
+- Login local (cajero/admin) + PIN Admin (hash)
 ========================= */
 
 (() => {
@@ -18,7 +22,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-  const LS_KEY = 'TPV_BWPRO_V1_1';
+  const LS_KEY = 'TPV_BWPRO_PRO_V1_2';
 
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const now = () => new Date();
@@ -26,6 +30,8 @@ Archivo: app.js  (REGENERADO MEJORADO)
     const d = now();
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
+
+  const dateKey = (d = now()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   const parseMoney = (s) => {
     if (s == null) return 0;
@@ -57,11 +63,24 @@ Archivo: app.js  (REGENERADO MEJORADO)
     return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880;
+      g.gain.value = 0.03;
+      o.start();
+      setTimeout(() => { o.stop(); ctx.close(); }, 70);
+    } catch (_) {}
+  }
+
   /* =========================
      STATE
   ========================== */
   const defaultState = () => ({
-    version: '1.1',
+    version: '1.2-pro',
     settings: {
       shopName: 'Tu Tienda',
       shopSub: 'CIF / Dirección / Tel',
@@ -70,7 +89,9 @@ Archivo: app.js  (REGENERADO MEJORADO)
       theme: 'day',
       directPay: false,
       autoPrint: false,
-      adminPinHash: '', // se inicializa a hash('1234') si vacío
+      autoGoSaleOnScan: true,
+      beepOnScan: true,
+      adminPinHash: '',
     },
     session: {
       user: { name: 'CAJERO', role: 'cashier' },
@@ -78,10 +99,10 @@ Archivo: app.js  (REGENERADO MEJORADO)
     },
     counters: { ticketSeq: 1 },
     users: [
-      // demo local (hash se rellena en initUsers)
       { username: 'cajero', passHash: '', role: 'cashier' },
       { username: 'admin',  passHash: '', role: 'admin' },
     ],
+    categories: ['Fruta', 'Verdura', 'Tropical', 'Otros'],
     products: [
       { id: 'P1', barcode: '1234567890123', name: 'Plátano',  price: 1.89, cost: 1.20, category: 'Fruta',   fav: true, unit: 'ud' },
       { id: 'P2', barcode: '7894561230123', name: 'Manzana',  price: 2.40, cost: 1.50, category: 'Fruta',   fav: true, unit: 'ud' },
@@ -89,14 +110,15 @@ Archivo: app.js  (REGENERADO MEJORADO)
       { id: 'P4', barcode: '3456789012345', name: 'Tomate',   price: 2.10, cost: 1.25, category: 'Verdura', fav: true, unit: 'ud' },
       { id: 'P5', barcode: '4567890123456', name: 'Lechuga',  price: 1.20, cost: 0.70, category: 'Verdura', fav: true, unit: 'ud' },
       { id: 'P6', barcode: '5678901234567', name: 'Aguacate', price: 3.90, cost: 2.30, category: 'Tropical',fav: true, unit: 'ud' },
-      { id: 'P7', barcode: '',             name: 'Bolsa',    price: 0.10, cost: null, category: 'Otros',   fav: true, unit: 'ud' },
+      { id: 'P7', barcode: '',              name: 'Bolsa',    price: 0.10, cost: null, category: 'Otros',   fav: true, unit: 'ud' },
     ],
     carts: {
       active: { lines: [], noteName: '', payMethod: 'efectivo', given: 0 },
-      parked: null,
+      parkedList: [], // [{id,name,ts,cart}]
     },
     sales: [],
     lastSaleId: null,
+    closingsZ: [], // [{id,dateKey,at,total,cash,card,counted,diff,note,user}]
     audit: []
   });
 
@@ -105,9 +127,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
     if (typeof base !== 'object' || base === null) return patch ?? base;
     const out = { ...base };
     if (typeof patch !== 'object' || patch === null) return out;
-    for (const k of Object.keys(patch)) {
-      out[k] = k in base ? deepMerge(base[k], patch[k]) : patch[k];
-    }
+    for (const k of Object.keys(patch)) out[k] = k in base ? deepMerge(base[k], patch[k]) : patch[k];
     return out;
   };
 
@@ -137,9 +157,11 @@ Archivo: app.js  (REGENERADO MEJORADO)
     btnAdmin: $('#btnAdmin'),
     adminState: $('#adminState'),
 
+    // venta
     barcodeInput: $('#barcodeInput'),
     searchInput: $('#searchInput'),
-    chips: $$('.chip'),
+    catChips: $('#catChips'),
+    chips: () => $$('.chip', el.catChips || document),
     favGrid: $('#favGrid'),
 
     ticketNo: $('#ticketNo'),
@@ -169,6 +191,8 @@ Archivo: app.js  (REGENERADO MEJORADO)
     btnQuickAmount: $('#btnQuickAmount'),
     btnPark: $('#btnPark'),
     parkBadge: $('#parkBadge'),
+    btnCats: $('#btnCats'),
+    btnCats2: $('#btnCats2'),
 
     // settings
     setShopName: $('#setShopName'),
@@ -178,6 +202,8 @@ Archivo: app.js  (REGENERADO MEJORADO)
     setAdminPin: $('#setAdminPin'),
     setDirectPay: $('#setDirectPay'),
     setAutoPrint: $('#setAutoPrint'),
+    setAutoGoSale: $('#setAutoGoSale'),
+    setBeep: $('#setBeep'),
     btnAdminUnlock: $('#btnAdminUnlock'),
 
     // modals
@@ -188,6 +214,9 @@ Archivo: app.js  (REGENERADO MEJORADO)
     modalQuick: $('#modalQuick'),
     modalProduct: $('#modalProduct'),
     modalEmail: $('#modalEmail'),
+    modalCats: $('#modalCats'),
+    modalParked: $('#modalParked'),
+    modalCloseZ: $('#modalCloseZ'),
     closeBtns: $$('[data-close]'),
 
     // login
@@ -213,11 +242,22 @@ Archivo: app.js  (REGENERADO MEJORADO)
     btnPayOk: $('#btnPayOk'),
 
     // quick modal
+    keypad: $('#keypad'),
     quickAmount: $('#quickAmount'),
     quickName: $('#quickName'),
     btnQuickOk: $('#btnQuickOk'),
 
-    // product modal
+    // parked
+    parkedList: $('#parkedList'),
+    btnParkNow: $('#btnParkNow'),
+
+    // cats
+    newCatName: $('#newCatName'),
+    btnAddCat: $('#btnAddCat'),
+    catsList: $('#catsList'),
+
+    // product
+    prodTitle: $('#prodTitle'),
     prodBarcode: $('#prodBarcode'),
     prodName: $('#prodName'),
     prodPrice: $('#prodPrice'),
@@ -227,11 +267,6 @@ Archivo: app.js  (REGENERADO MEJORADO)
     prodUnit: $('#prodUnit'),
     btnProductSave: $('#btnProductSave'),
 
-    // email
-    emailTo: $('#emailTo'),
-    emailMsg: $('#emailMsg'),
-    btnEmailSend: $('#btnEmailSend'),
-
     // products page
     productsTable: $('#productsTable'),
     prodSearchName: $('#prodSearchName'),
@@ -239,13 +274,19 @@ Archivo: app.js  (REGENERADO MEJORADO)
     prodSearchCat: $('#prodSearchCat'),
     btnAddProduct: $('#btnAddProduct'),
     btnAddProductInline: $('#btnAddProductInline'),
+    btnImportCsv: $('#btnImportCsv'),
+    btnExportCsv: $('#btnExportCsv'),
 
-    // sales page
+    // sales
     salesTable: $('#salesTable'),
     statTickets: $('#statTickets'),
     statTotal: $('#statTotal'),
     statCash: $('#statCash'),
     statCard: $('#statCard'),
+    closingsBox: $('#closingsBox'),
+    btnCloseZ: $('#btnCloseZ'),
+    btnExportSalesJson: $('#btnExportSalesJson'),
+    btnImportSalesJson: $('#btnImportSalesJson'),
 
     // profit
     profitSales: $('#profitSales'),
@@ -253,7 +294,29 @@ Archivo: app.js  (REGENERADO MEJORADO)
     profitValue: $('#profitValue'),
     profitMargin: $('#profitMargin'),
 
-    // print area & toast
+    // close z modal
+    zTotal: $('#zTotal'),
+    zCash: $('#zCash'),
+    zCard: $('#zCard'),
+    zCounted: $('#zCounted'),
+    zDiff: $('#zDiff'),
+    zNote: $('#zNote'),
+    btnCloseZOk: $('#btnCloseZOk'),
+
+    // backup buttons in ajustes
+    btnExportJson: $('#btnExportJson'),
+    btnImportJson: $('#btnImportJson'),
+
+    // email
+    emailTo: $('#emailTo'),
+    emailMsg: $('#emailMsg'),
+    btnEmailSend: $('#btnEmailSend'),
+
+    // files
+    fileJson: $('#fileJson'),
+    fileCsv: $('#fileCsv'),
+
+    // print & toast
     printArea: $('#printArea'),
     toastHost: $('#toastHost'),
   };
@@ -289,12 +352,11 @@ Archivo: app.js  (REGENERADO MEJORADO)
       t.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     el.pages.forEach(p => p.classList.toggle('is-active', p.dataset.page === name));
-    if (name === 'venta') focusBarcodeSoon();
   }
 
   function openModal(dlg) {
     if (!dlg) return;
-    if (el.backdrop) el.backdrop.hidden = false;
+    el.backdrop && (el.backdrop.hidden = false);
     dlg.showModal();
     const f = dlg.querySelector('input,select,textarea,button');
     if (f) setTimeout(() => f.focus(), 25);
@@ -303,13 +365,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
   function closeModal(dlg) {
     if (!dlg) return;
     dlg.close();
-    if (el.backdrop) el.backdrop.hidden = true;
-    focusBarcodeSoon();
-  }
-
-  function focusBarcodeSoon() {
-    if (!el.barcodeInput) return;
-    setTimeout(() => el.barcodeInput.focus(), 25);
+    el.backdrop && (el.backdrop.hidden = true);
   }
 
   /* =========================
@@ -318,32 +374,21 @@ Archivo: app.js  (REGENERADO MEJORADO)
   function adminUnlocked() {
     return (state.session.adminUnlockedUntil || 0) > Date.now();
   }
-
   function setAdminUnlocked(minutes = 5) {
     state.session.adminUnlockedUntil = Date.now() + minutes * 60 * 1000;
     save();
     renderAdminState();
   }
-
   function audit(type, data = {}) {
     state.audit.push({ ts: Date.now(), at: nowEs(), user: state.session.user?.name || 'CAJERO', type, data });
-    if (state.audit.length > 2000) state.audit.splice(0, state.audit.length - 2000);
+    if (state.audit.length > 4000) state.audit.splice(0, state.audit.length - 4000);
     save();
   }
-
   async function ensureDefaultHashes() {
-    // admin pin default 1234
-    if (!state.settings.adminPinHash) {
-      state.settings.adminPinHash = await sha256Hex('1234');
-      save();
-    }
-    // users default password 1234
-    for (const u of state.users) {
-      if (!u.passHash) u.passHash = await sha256Hex('1234');
-    }
+    if (!state.settings.adminPinHash) state.settings.adminPinHash = await sha256Hex('1234');
+    for (const u of state.users) if (!u.passHash) u.passHash = await sha256Hex('1234');
     save();
   }
-
   async function login(username, password) {
     const u = String(username || '').trim().toLowerCase();
     const p = String(password || '');
@@ -358,10 +403,140 @@ Archivo: app.js  (REGENERADO MEJORADO)
     renderHeader();
     return { ok: true };
   }
-
   async function verifyAdminPin(pin) {
     const h = await sha256Hex(String(pin || '').trim());
     return h === state.settings.adminPinHash;
+  }
+
+  /* =========================
+     CATEGORIES (PRO)
+  ========================== */
+  function normalizeCatName(name) {
+    return String(name || '').trim().replace(/\s+/g, ' ');
+  }
+  function ensureOthersCategory() {
+    if (!state.categories.some(c => c.toLowerCase() === 'otros')) state.categories.push('Otros');
+  }
+  function addCategory(name) {
+    const n = normalizeCatName(name);
+    if (!n) return { ok: false, msg: 'Nombre vacío' };
+    if (state.categories.some(c => c.toLowerCase() === n.toLowerCase())) return { ok: false, msg: 'Ya existe' };
+    state.categories.push(n);
+    ensureOthersCategory();
+    save();
+    renderAll();
+    return { ok: true };
+  }
+  function renameCategory(oldName, newName) {
+    const n = normalizeCatName(newName);
+    if (!n) return { ok: false, msg: 'Nombre vacío' };
+    if (oldName.toLowerCase() === 'otros') return { ok: false, msg: '“Otros” no se renombra' };
+    if (state.categories.some(c => c.toLowerCase() === n.toLowerCase())) return { ok: false, msg: 'Ya existe' };
+
+    state.categories = state.categories.map(c => (c === oldName ? n : c));
+    // actualizar productos
+    for (const p of state.products) if ((p.category || '') === oldName) p.category = n;
+    save();
+    renderAll();
+    return { ok: true };
+  }
+  function deleteCategory(name) {
+    if (name.toLowerCase() === 'otros') return { ok: false, msg: '“Otros” no se borra' };
+    state.categories = state.categories.filter(c => c !== name);
+    ensureOthersCategory();
+    // mover productos a Otros
+    for (const p of state.products) if ((p.category || '') === name) p.category = 'Otros';
+    save();
+    renderAll();
+    return { ok: true };
+  }
+
+  function renderCategoriesUI() {
+    // chips
+    if (el.catChips) {
+      const currentActive = el.catChips.querySelector('.chip.is-active')?.dataset?.cat || 'favoritos';
+      el.catChips.innerHTML = '';
+      const addChip = (label, catKey, active) => {
+        const b = document.createElement('button');
+        b.className = 'chip' + (active ? ' is-active' : '');
+        b.type = 'button';
+        b.dataset.cat = catKey;
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          $$('.chip', el.catChips).forEach(x => x.classList.remove('is-active'));
+          b.classList.add('is-active');
+          renderFavorites();
+        });
+        el.catChips.appendChild(b);
+      };
+
+      addChip('Favoritos', 'favoritos', currentActive === 'favoritos');
+      for (const c of state.categories) {
+        addChip(c, c, currentActive === c);
+      }
+    }
+
+    // selects
+    const fillSelect = (sel, includeAll = false) => {
+      if (!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '';
+      if (includeAll) {
+        const o = document.createElement('option');
+        o.value = '';
+        o.textContent = 'Todas';
+        sel.appendChild(o);
+      }
+      for (const c of state.categories) {
+        const o = document.createElement('option');
+        o.value = c;
+        o.textContent = c;
+        sel.appendChild(o);
+      }
+      // restore
+      if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
+      else if (!includeAll && state.categories.length) sel.value = state.categories[0];
+    };
+
+    fillSelect(el.prodCat, false);
+    fillSelect(el.prodSearchCat, true);
+
+    // cats modal list
+    if (el.catsList) {
+      el.catsList.innerHTML = '';
+      for (const c of state.categories) {
+        const row = document.createElement('div');
+        row.className = 'cat-row';
+        row.innerHTML = `
+          <div>
+            <div class="line-name">${escapeHtml(c)}</div>
+            <div class="muted small">Productos: <span class="mono">${countProductsInCat(c)}</span></div>
+          </div>
+          <div class="cat-actions">
+            <button class="btn btn-soft btn-small" data-act="rename">Renombrar</button>
+            <button class="btn btn-ghost btn-small" data-act="del">Borrar</button>
+          </div>
+        `;
+        const [btnRen, btnDel] = row.querySelectorAll('button');
+        btnRen.addEventListener('click', () => {
+          const n = prompt(`Renombrar "${c}" a:`, c);
+          if (n == null) return;
+          const r = renameCategory(c, n);
+          if (!r.ok) toast(r.msg);
+        });
+        btnDel.addEventListener('click', () => {
+          if (!adminUnlocked()) return (openModal(el.modalAdmin), toast('PIN admin requerido'));
+          if (!confirm(`¿Borrar categoría "${c}"? (Productos pasarán a "Otros")`)) return;
+          const r = deleteCategory(c);
+          if (!r.ok) toast(r.msg);
+        });
+        el.catsList.appendChild(row);
+      }
+    }
+  }
+
+  function countProductsInCat(cat) {
+    return state.products.filter(p => (p.category || 'Otros') === cat).length;
   }
 
   /* =========================
@@ -385,7 +560,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
     }
 
     if (cat === 'favoritos') items = items.filter(p => !!p.fav);
-    else items = items.filter(p => (p.category || '').toLowerCase() === String(cat || '').toLowerCase());
+    else items = items.filter(p => (p.category || 'Otros') === cat);
 
     items.sort((a, b) => (Number(!!b.fav) - Number(!!a.fav)) || (a.name || '').localeCompare(b.name || ''));
     return items.slice(0, 24);
@@ -394,14 +569,18 @@ Archivo: app.js  (REGENERADO MEJORADO)
   function addOrUpdateProduct(prod) {
     const barcode = String(prod.barcode || '').trim();
     if (barcode) {
-      const exists = state.products.find(p => String(p.barcode || '').trim() === barcode);
-      if (exists) {
-        // update
-        Object.assign(exists, prod);
-        return exists;
+      const existsByBarcode = state.products.find(p => String(p.barcode || '').trim() === barcode && p.id !== prod.id);
+      if (existsByBarcode) {
+        // barcode duplicado: se actualiza el existente
+        Object.assign(existsByBarcode, prod, { id: existsByBarcode.id });
+        return existsByBarcode;
       }
     }
-    const newP = { ...prod, id: prod.id || ('P-' + uid()) };
+    if (prod.id) {
+      const existing = state.products.find(p => p.id === prod.id);
+      if (existing) { Object.assign(existing, prod); return existing; }
+    }
+    const newP = { ...prod, id: 'P-' + uid() };
     state.products.push(newP);
     return newP;
   }
@@ -473,24 +652,104 @@ Archivo: app.js  (REGENERADO MEJORADO)
       state.carts.active = { lines: [], noteName: '', payMethod: 'efectivo', given: 0 };
       save();
       renderAll();
-    },
-    parkToggle() {
-      if (state.carts.parked) {
-        state.carts.active = state.carts.parked;
-        state.carts.parked = null;
-        save();
-        renderAll();
-        toast('Carrito recuperado');
-      } else {
-        if (!cart.active.lines.length) return toast('No hay líneas');
-        state.carts.parked = JSON.parse(JSON.stringify(state.carts.active));
-        state.carts.active = { lines: [], noteName: '', payMethod: 'efectivo', given: 0 };
-        save();
-        renderAll();
-        toast('Carrito aparcado');
-      }
     }
   };
+
+  /* =========================
+     PARKED (MULTI)
+  ========================== */
+  function parkCurrentTicket() {
+    if (!cart.active.lines.length) return toast('No hay líneas para aparcar');
+    const { total } = cart.totals();
+    const name = prompt('Nombre del aparcado (opcional):', `Aparcado ${state.carts.parkedList.length + 1}`) || `Aparcado ${state.carts.parkedList.length + 1}`;
+    state.carts.parkedList.push({
+      id: 'K-' + uid(),
+      name: String(name).trim(),
+      ts: Date.now(),
+      cart: JSON.parse(JSON.stringify(state.carts.active)),
+      total
+    });
+    audit('PARK', { name, total });
+    cart.clear();
+    save();
+    renderAll();
+    toast('Ticket aparcado');
+  }
+
+  function renderParkedBadge() {
+    if (!el.parkBadge) return;
+    const n = state.carts.parkedList.length;
+    if (n > 0) {
+      el.parkBadge.hidden = false;
+      el.parkBadge.textContent = String(n);
+    } else el.parkBadge.hidden = true;
+  }
+
+  function renderParkedModal() {
+    if (!el.parkedList) return;
+    el.parkedList.innerHTML = '';
+    const list = state.carts.parkedList.slice().sort((a,b)=>b.ts-a.ts);
+
+    if (!list.length) {
+      el.parkedList.innerHTML = `<div class="muted small">No hay tickets aparcados.</div>`;
+      return;
+    }
+
+    for (const item of list) {
+      const div = document.createElement('div');
+      div.className = 'parked-item';
+      const linesCount = item.cart?.lines?.length || 0;
+      div.innerHTML = `
+        <div>
+          <div class="line-name">${escapeHtml(item.name || 'Aparcado')}</div>
+          <div class="parked-meta">
+            <span class="mono">${new Date(item.ts).toLocaleString('es-ES')}</span>
+            · Líneas: <span class="mono">${linesCount}</span>
+            · Total: <span class="mono">${fmtEUR(item.total || 0)}</span>
+          </div>
+        </div>
+        <div class="parked-actions">
+          <button class="btn btn-soft btn-small" data-act="load">Recuperar</button>
+          <button class="btn btn-ghost btn-small" data-act="rename">Renombrar</button>
+          <button class="btn btn-ghost btn-small" data-act="del">Borrar</button>
+        </div>
+      `;
+      const btnLoad = div.querySelector('[data-act="load"]');
+      const btnRen = div.querySelector('[data-act="rename"]');
+      const btnDel = div.querySelector('[data-act="del"]');
+
+      btnLoad.addEventListener('click', () => {
+        state.carts.active = JSON.parse(JSON.stringify(item.cart));
+        state.carts.parkedList = state.carts.parkedList.filter(x => x.id !== item.id);
+        save();
+        renderAll();
+        closeModal(el.modalParked);
+        toast('Ticket recuperado');
+        setTab('venta');
+      });
+
+      btnRen.addEventListener('click', () => {
+        const n = prompt('Nuevo nombre:', item.name || '');
+        if (n == null) return;
+        const it = state.carts.parkedList.find(x => x.id === item.id);
+        if (it) it.name = String(n).trim() || it.name;
+        save();
+        renderParkedModal();
+        renderParkedBadge();
+      });
+
+      btnDel.addEventListener('click', () => {
+        if (!adminUnlocked()) return (openModal(el.modalAdmin), toast('PIN admin requerido'));
+        if (!confirm('¿Borrar este aparcado?')) return;
+        state.carts.parkedList = state.carts.parkedList.filter(x => x.id !== item.id);
+        save();
+        renderParkedModal();
+        renderParkedBadge();
+      });
+
+      el.parkedList.appendChild(div);
+    }
+  }
 
   /* =========================
      TICKET (PrintArea)
@@ -502,8 +761,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
     return `T-${String(n).padStart(6, '0')}`;
   }
 
-  function buildTicketHTML(saleLike) {
-    const s = saleLike;
+  function buildTicketHTML(s) {
     const lines = s.lines || [];
     const head = `
       <div style="text-align:center; font-weight:900; margin-bottom:4px;">${escapeHtml(state.settings.shopName)}</div>
@@ -524,8 +782,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
           <div style="text-align:right;">${fmtMoney(totalLine)}</div>
         </div>
         <div style="display:flex; justify-content:space-between; color:#111; margin-bottom:4px;">
-          <div>${l.qty} x ${fmtMoney(l.price)}</div>
-          <div></div>
+          <div>${l.qty} x ${fmtMoney(l.price)}</div><div></div>
         </div>
       `;
     }).join('');
@@ -591,6 +848,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
       id: uid(),
       ticketNo,
       date: nowEs(),
+      dateKey: dateKey(),
       box: state.settings.boxName,
       user: state.session.user.name,
       payMethod,
@@ -614,7 +872,6 @@ Archivo: app.js  (REGENERADO MEJORADO)
     } else if (payMethod === 'mixto') {
       const cash = Number(cashAmount || 0);
       const card = Number(cardAmount || 0);
-      // cambio solo si efectivo supera lo que queda tras tarjeta
       const remaining = Math.max(0, sale.total - card);
       sale.change = Math.max(0, cash - remaining);
     }
@@ -632,63 +889,121 @@ Archivo: app.js  (REGENERADO MEJORADO)
   }
 
   /* =========================
-     RENDER
+     CLOSE Z
   ========================== */
-  function renderHeader() {
-    setTheme(state.settings.theme || 'day');
-
-    if (el.userLabel) el.userLabel.textContent = state.session.user?.name || 'CAJERO';
-    if (el.posUser) el.posUser.textContent = state.session.user?.name || 'CAJERO';
-
-    if (el.shopName) el.shopName.textContent = state.settings.shopName || 'Tu Tienda';
-    if (el.shopSub) el.shopSub.textContent = state.settings.shopSub || 'CIF / Dirección / Tel';
-    if (el.posBox) el.posBox.textContent = state.settings.boxName || 'CAJA-1';
-
-    if (el.ticketDate) el.ticketDate.textContent = nowEs();
-
-    const seq = state.counters.ticketSeq || 1;
-    if (el.ticketNo) el.ticketNo.textContent = `T-${String(seq).padStart(6, '0')}`;
-
-    renderAdminState();
-    renderParkState();
+  function computeSalesTotalsForDay(dayKey) {
+    const sales = state.sales.filter(s => s.dateKey === dayKey);
+    const total = sales.reduce((a,s)=>a+(Number(s.total)||0),0);
+    const cash = sales.reduce((a,s)=>{
+      if (s.payMethod === 'efectivo') return a + (Number(s.total)||0);
+      if (s.payMethod === 'mixto') return a + (Number(s.split?.cash)||0);
+      return a;
+    },0);
+    const card = sales.reduce((a,s)=>{
+      if (s.payMethod === 'tarjeta') return a + (Number(s.total)||0);
+      if (s.payMethod === 'mixto') return a + (Number(s.split?.card)||0);
+      return a;
+    },0);
+    return { total, cash, card, count: sales.length };
   }
 
+  function openCloseZModal() {
+    const dk = dateKey();
+    const sums = computeSalesTotalsForDay(dk);
+    el.zTotal && (el.zTotal.textContent = fmtEUR(sums.total));
+    el.zCash && (el.zCash.textContent = fmtEUR(sums.cash));
+    el.zCard && (el.zCard.textContent = fmtEUR(sums.card));
+    if (el.zCounted) el.zCounted.value = '';
+    if (el.zDiff) el.zDiff.value = '0,00';
+    if (el.zNote) el.zNote.value = '';
+    openModal(el.modalCloseZ);
+  }
+
+  function updateZDiff() {
+    const dk = dateKey();
+    const sums = computeSalesTotalsForDay(dk);
+    const counted = parseMoney(el.zCounted?.value || '0');
+    const diff = counted - sums.cash;
+    if (el.zDiff) el.zDiff.value = fmtMoney(diff);
+  }
+
+  function saveCloseZ() {
+    const dk = dateKey();
+    const sums = computeSalesTotalsForDay(dk);
+    const counted = parseMoney(el.zCounted?.value || '0');
+    const diff = counted - sums.cash;
+    const note = (el.zNote?.value || '').trim();
+
+    const rec = {
+      id: 'Z-' + uid(),
+      dateKey: dk,
+      at: nowEs(),
+      total: sums.total,
+      cash: sums.cash,
+      card: sums.card,
+      counted,
+      diff,
+      note,
+      user: state.session.user.name
+    };
+    state.closingsZ.push(rec);
+    save();
+    audit('CLOSE_Z', { dateKey: dk, total: sums.total, cash: sums.cash, counted, diff });
+    closeModal(el.modalCloseZ);
+    toast('Cierre Z guardado');
+    renderSalesSummary();
+  }
+
+  /* =========================
+     RENDER
+  ========================== */
   function renderAdminState() {
     if (!el.adminState) return;
     el.adminState.textContent = adminUnlocked() ? 'Admin ✓' : 'Admin';
   }
 
-  function renderParkState() {
-    if (!el.parkBadge) return;
-    if (state.carts.parked && state.carts.parked.lines?.length) {
-      el.parkBadge.hidden = false;
-      el.parkBadge.textContent = String(state.carts.parked.lines.length);
-    } else {
-      el.parkBadge.hidden = true;
-    }
+  function renderHeader() {
+    setTheme(state.settings.theme || 'day');
+    el.userLabel && (el.userLabel.textContent = state.session.user?.name || 'CAJERO');
+    el.posUser && (el.posUser.textContent = state.session.user?.name || 'CAJERO');
+
+    el.shopName && (el.shopName.textContent = state.settings.shopName || 'Tu Tienda');
+    el.shopSub && (el.shopSub.textContent = state.settings.shopSub || 'CIF / Dirección / Tel');
+    el.posBox && (el.posBox.textContent = state.settings.boxName || 'CAJA-1');
+
+    el.ticketDate && (el.ticketDate.textContent = nowEs());
+
+    const seq = state.counters.ticketSeq || 1;
+    el.ticketNo && (el.ticketNo.textContent = `T-${String(seq).padStart(6, '0')}`);
+
+    renderAdminState();
+    renderParkedBadge();
   }
 
   function renderFavorites() {
     if (!el.favGrid) return;
-    const activeChip = el.chips.find(c => c.classList.contains('is-active'));
-    const cat = activeChip ? activeChip.dataset.cat : 'favoritos';
+
+    const activeChip = el.catChips?.querySelector('.chip.is-active')?.dataset?.cat || 'favoritos';
     const q = el.searchInput ? el.searchInput.value : '';
-    const items = listProductsForGrid(cat, q);
+    const items = listProductsForGrid(activeChip, q);
 
     el.favGrid.innerHTML = '';
 
-    // Tile: Importe rápido siempre
-    el.favGrid.appendChild(makeFavTile('Importe rápido', 'Manual', () => openModal(el.modalQuick)));
+    // tile: importe
+    el.favGrid.appendChild(makeFavTile('Importe rápido', 'Teclado', () => openModal(el.modalQuick)));
 
-    // Tiles: productos
+    // tiles: productos
     for (const p of items) {
       const priceText = p.price != null ? fmtEUR(p.price) : '—';
       el.favGrid.appendChild(makeFavTile(p.name, priceText, () => cart.addProduct(p, 1)));
     }
 
-    // Tile: Aparcar/Recuperar rápido
-    if (state.carts.parked) {
-      el.favGrid.appendChild(makeFavTile('Recuperar', 'Carrito', () => cart.parkToggle()));
+    // tile: aparcados
+    if (state.carts.parkedList.length) {
+      el.favGrid.appendChild(makeFavTile('Aparcados', `${state.carts.parkedList.length}`, () => {
+        renderParkedModal();
+        openModal(el.modalParked);
+      }));
     }
   }
 
@@ -704,10 +1019,9 @@ Archivo: app.js  (REGENERADO MEJORADO)
   function renderLines() {
     if (!el.ticketLines) return;
 
-    // Keep header row
     const thead = el.ticketLines.querySelector('.trow.thead');
     el.ticketLines.innerHTML = '';
-    if (thead) el.ticketLines.appendChild(thead);
+    thead && el.ticketLines.appendChild(thead);
 
     cart.active.lines.forEach((l, idx) => {
       const row = document.createElement('div');
@@ -741,18 +1055,10 @@ Archivo: app.js  (REGENERADO MEJORADO)
 
       qtyIn.addEventListener('change', () => cart.setQty(idx, qtyIn.value));
       qtyIn.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          qtyIn.blur();
-          focusBarcodeSoon();
-        }
+        if (e.key === 'Enter') { e.preventDefault(); qtyIn.blur(); }
       });
 
-      // Click derecho: borrar línea
-      row.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        cart.remove(idx);
-      });
+      row.addEventListener('contextmenu', (e) => { e.preventDefault(); cart.remove(idx); });
 
       el.ticketLines.appendChild(row);
     });
@@ -760,36 +1066,31 @@ Archivo: app.js  (REGENERADO MEJORADO)
 
   function renderTotals() {
     const { total } = cart.totals();
-    if (el.linesCount) el.linesCount.textContent = String(cart.active.lines.length);
-    if (el.subTotal) el.subTotal.textContent = fmtEUR(total);
-    if (el.grandTotal) el.grandTotal.textContent = fmtEUR(total);
+    el.linesCount && (el.linesCount.textContent = String(cart.active.lines.length));
+    el.subTotal && (el.subTotal.textContent = fmtEUR(total));
+    el.grandTotal && (el.grandTotal.textContent = fmtEUR(total));
 
     const method = cart.active.payMethod || 'efectivo';
     const given = parseMoney(el.givenInput?.value ?? cart.active.given);
-
-    const change = (method === 'efectivo')
-      ? Math.max(0, given - total)
-      : 0;
-
-    if (el.changeInput) el.changeInput.value = fmtMoney(change);
+    const change = (method === 'efectivo') ? Math.max(0, given - total) : 0;
+    el.changeInput && (el.changeInput.value = fmtMoney(change));
   }
 
   function renderProductsTable() {
     if (!el.productsTable) return;
 
-    // conservar thead
     const thead = el.productsTable.querySelector('.trow.thead');
     el.productsTable.innerHTML = '';
-    if (thead) el.productsTable.appendChild(thead);
+    thead && el.productsTable.appendChild(thead);
 
     const qName = String(el.prodSearchName?.value || '').trim().toLowerCase();
     const qBar  = String(el.prodSearchBarcode?.value || '').trim();
-    const qCat  = String(el.prodSearchCat?.value || '').trim().toLowerCase();
+    const qCat  = String(el.prodSearchCat?.value || '').trim();
 
     let items = state.products.slice();
     if (qName) items = items.filter(p => (p.name || '').toLowerCase().includes(qName));
     if (qBar)  items = items.filter(p => String(p.barcode || '').includes(qBar));
-    if (qCat)  items = items.filter(p => (p.category || '').toLowerCase() === qCat);
+    if (qCat)  items = items.filter(p => (p.category || 'Otros') === qCat);
 
     items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
@@ -800,7 +1101,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
         <div class="tcell">
           <div>
             <div class="line-name">${escapeHtml(p.name)}</div>
-            <div class="line-sub muted">${escapeHtml(p.category || '')}</div>
+            <div class="line-sub muted">${escapeHtml(p.category || 'Otros')}</div>
           </div>
         </div>
         <div class="tcell mono">${escapeHtml(p.barcode || '—')}</div>
@@ -808,26 +1109,13 @@ Archivo: app.js  (REGENERADO MEJORADO)
         <div class="tcell tcell-right mono">${p.cost == null ? '—' : fmtMoney(p.cost)}</div>
         <div class="tcell tcell-center">${p.fav ? '<span class="badge badge-ok">Sí</span>' : '<span class="badge">No</span>'}</div>
         <div class="tcell tcell-right">
-          <button class="btn btn-ghost btn-small" type="button">Editar</button>
+          <button class="btn btn-soft btn-small" type="button">Editar</button>
           <button class="btn btn-ghost btn-small" type="button">Borrar</button>
         </div>
       `;
       const [btnEdit, btnDel] = row.querySelectorAll('button');
 
-      btnEdit.addEventListener('click', () => {
-        // prefill modal
-        el.prodBarcode.value = p.barcode || '';
-        el.prodName.value = p.name || '';
-        el.prodPrice.value = fmtMoney(p.price || 0).replace('.', ',');
-        el.prodCost.value = p.cost == null ? '' : fmtMoney(p.cost).replace('.', ',');
-        el.prodCat.value = p.category || 'Otros';
-        el.prodFav.value = p.fav ? '1' : '0';
-        el.prodUnit.value = p.unit || 'ud';
-        // guardamos id en dataset
-        el.modalProduct.dataset.editId = p.id;
-        openModal(el.modalProduct);
-      });
-
+      btnEdit.addEventListener('click', () => openProductModalEdit(p));
       btnDel.addEventListener('click', () => {
         if (!adminUnlocked()) return (openModal(el.modalAdmin), toast('PIN admin requerido'));
         if (!confirm(`¿Borrar producto "${p.name}"?`)) return;
@@ -858,18 +1146,18 @@ Archivo: app.js  (REGENERADO MEJORADO)
       return s;
     }, 0);
 
-    if (el.statTickets) el.statTickets.textContent = String(tickets);
-    if (el.statTotal) el.statTotal.textContent = fmtEUR(total);
-    if (el.statCash) el.statCash.textContent = fmtEUR(cash);
-    if (el.statCard) el.statCard.textContent = fmtEUR(card);
+    el.statTickets && (el.statTickets.textContent = String(tickets));
+    el.statTotal && (el.statTotal.textContent = fmtEUR(total));
+    el.statCash && (el.statCash.textContent = fmtEUR(cash));
+    el.statCard && (el.statCard.textContent = fmtEUR(card));
 
     // sales table
     if (el.salesTable) {
       const thead = el.salesTable.querySelector('.trow.thead');
       el.salesTable.innerHTML = '';
-      if (thead) el.salesTable.appendChild(thead);
+      thead && el.salesTable.appendChild(thead);
 
-      const last = sales.slice(-50).reverse();
+      const last = sales.slice(-80).reverse();
       for (const s of last) {
         const row = document.createElement('div');
         row.className = 'trow';
@@ -887,7 +1175,22 @@ Archivo: app.js  (REGENERADO MEJORADO)
       }
     }
 
-    // profits
+    // closings list
+    if (el.closingsBox) {
+      if (!state.closingsZ.length) {
+        el.closingsBox.innerHTML = `<div class="muted">Sin cierres todavía.</div>`;
+      } else {
+        const last = state.closingsZ.slice(-10).reverse();
+        el.closingsBox.innerHTML = last.map(z => `
+          <div style="width:100%; border:1px solid var(--line); border-radius:14px; padding:10px; background: rgba(0,0,0,.02);">
+            <div class="mono"><b>${escapeHtml(z.dateKey)}</b> · ${escapeHtml(z.at)}</div>
+            <div class="muted small">Total: <span class="mono">${fmtMoney(z.total)}€</span> · Efe esp: <span class="mono">${fmtMoney(z.cash)}€</span> · Contado: <span class="mono">${fmtMoney(z.counted)}€</span> · Dif: <span class="mono">${fmtMoney(z.diff)}€</span></div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // profit
     const cost = sales.reduce((s, x) => {
       const c = (x.lines || []).reduce((sum, l) => {
         if (l.cost == null) return sum;
@@ -898,13 +1201,15 @@ Archivo: app.js  (REGENERADO MEJORADO)
     const profit = total - cost;
     const margin = total > 0 ? (profit / total) * 100 : 0;
 
-    if (el.profitSales) el.profitSales.textContent = fmtEUR(total);
-    if (el.profitCost) el.profitCost.textContent = fmtEUR(cost);
-    if (el.profitValue) el.profitValue.textContent = fmtEUR(profit);
-    if (el.profitMargin) el.profitMargin.textContent = `${margin.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+    el.profitSales && (el.profitSales.textContent = fmtEUR(total));
+    el.profitCost && (el.profitCost.textContent = fmtEUR(cost));
+    el.profitValue && (el.profitValue.textContent = fmtEUR(profit));
+    el.profitMargin && (el.profitMargin.textContent = `${margin.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`);
   }
 
   function renderAll() {
+    ensureOthersCategory();
+    renderCategoriesUI();
     renderHeader();
     renderFavorites();
     renderLines();
@@ -914,46 +1219,50 @@ Archivo: app.js  (REGENERADO MEJORADO)
   }
 
   /* =========================
+     MODALS HELPERS
+  ========================== */
+  function openProductModalNew(prefillBarcode = '') {
+    el.modalProduct.dataset.editId = '';
+    el.prodTitle && (el.prodTitle.textContent = 'Nuevo producto');
+    el.prodBarcode && (el.prodBarcode.value = prefillBarcode);
+    el.prodName && (el.prodName.value = '');
+    el.prodPrice && (el.prodPrice.value = '');
+    el.prodCost && (el.prodCost.value = '');
+    el.prodFav && (el.prodFav.value = '1');
+    el.prodUnit && (el.prodUnit.value = 'ud');
+    el.prodCat && (el.prodCat.value = state.categories.includes('Otros') ? 'Otros' : (state.categories[0] || 'Otros'));
+    openModal(el.modalProduct);
+  }
+
+  function openProductModalEdit(p) {
+    el.modalProduct.dataset.editId = p.id;
+    el.prodTitle && (el.prodTitle.textContent = 'Editar producto');
+    el.prodBarcode && (el.prodBarcode.value = p.barcode || '');
+    el.prodName && (el.prodName.value = p.name || '');
+    el.prodPrice && (el.prodPrice.value = fmtMoney(p.price || 0).replace('.', ','));
+    el.prodCost && (el.prodCost.value = p.cost == null ? '' : fmtMoney(p.cost).replace('.', ','));
+    el.prodFav && (el.prodFav.value = p.fav ? '1' : '0');
+    el.prodUnit && (el.prodUnit.value = p.unit || 'ud');
+    el.prodCat && (el.prodCat.value = p.category || 'Otros');
+    openModal(el.modalProduct);
+  }
+
+  /* =========================
      PAY FLOW
   ========================== */
-  function openQuickModal(prefilledAmount = '', prefilledName = '') {
-    if (el.quickAmount) el.quickAmount.value = prefilledAmount;
-    if (el.quickName) el.quickName.value = prefilledName;
-    openModal(el.modalQuick);
-  }
-
-  function openPayModal() {
-    const { total } = cart.totals();
-    if (!(total > 0)) return toast('No hay líneas');
-
-    if (el.payTotal) el.payTotal.textContent = fmtEUR(total);
-    if (el.payNote) el.payNote.value = el.noteName?.value || cart.active.noteName || '';
-
-    // sincroniza método principal con modal
-    const m = cart.active.payMethod || 'efectivo';
-    if (el.payMethod) el.payMethod.value = m;
-    syncPayUI();
-
-    // entregado/cambio
-    if (el.payGiven) el.payGiven.value = (el.givenInput?.value || '').trim();
-    calcPayChange();
-
-    openModal(el.modalPay);
-  }
-
   function syncPayUI() {
     const m = el.payMethod?.value || 'efectivo';
     const isCash = m === 'efectivo';
     const isCard = m === 'tarjeta';
     const isMix  = m === 'mixto';
 
-    if (el.paySplitWrap) el.paySplitWrap.hidden = !isMix;
+    el.paySplitWrap && (el.paySplitWrap.hidden = !isMix);
     if (el.payGivenWrap) el.payGivenWrap.style.display = (isCash || isMix) ? '' : 'none';
     if (el.payChangeWrap) el.payChangeWrap.style.display = (isCash || isMix) ? '' : 'none';
 
     if (isCard) {
-      if (el.payGiven) el.payGiven.value = '';
-      if (el.payChange) el.payChange.value = '0,00';
+      el.payGiven && (el.payGiven.value = '');
+      el.payChange && (el.payChange.value = '0,00');
     }
   }
 
@@ -963,7 +1272,7 @@ Archivo: app.js  (REGENERADO MEJORADO)
 
     if (m === 'efectivo') {
       const given = parseMoney(el.payGiven?.value || '0');
-      if (el.payChange) el.payChange.value = fmtMoney(Math.max(0, given - total));
+      el.payChange && (el.payChange.value = fmtMoney(Math.max(0, given - total)));
       return;
     }
     if (m === 'mixto') {
@@ -971,10 +1280,26 @@ Archivo: app.js  (REGENERADO MEJORADO)
       const cash = parseMoney(el.payCash?.value || '0');
       const remaining = Math.max(0, total - card);
       const change = Math.max(0, cash - remaining);
-      if (el.payChange) el.payChange.value = fmtMoney(change);
+      el.payChange && (el.payChange.value = fmtMoney(change));
       return;
     }
-    if (el.payChange) el.payChange.value = '0,00';
+    el.payChange && (el.payChange.value = '0,00');
+  }
+
+  function openPayModal() {
+    const { total } = cart.totals();
+    if (!(total > 0)) return toast('No hay líneas');
+
+    el.payTotal && (el.payTotal.textContent = fmtEUR(total));
+    el.payNote && (el.payNote.value = el.noteName?.value || cart.active.noteName || '');
+
+    const m = cart.active.payMethod || 'efectivo';
+    el.payMethod && (el.payMethod.value = m);
+    syncPayUI();
+
+    el.payGiven && (el.payGiven.value = (el.givenInput?.value || '').trim());
+    calcPayChange();
+    openModal(el.modalPay);
   }
 
   function confirmSaleFromUI({ fromModal = true } = {}) {
@@ -1001,35 +1326,23 @@ Archivo: app.js  (REGENERADO MEJORADO)
       given = parseMoney(el.givenInput?.value || '0');
     }
 
-    // validación mínima
     if (method === 'efectivo' && given < total) {
       if (!confirm('Entregado menor que total. ¿Confirmar igualmente?')) return;
-    }
-    if (method === 'mixto') {
-      if ((cashAmount + cardAmount) < total) {
-        if (!confirm('Mixto: suma efectivo+tarjeta menor que total. ¿Confirmar igualmente?')) return;
-      }
     }
 
     const sale = saveSale({ payMethod: method, given, cashAmount, cardAmount, noteName: note });
     if (!sale) return toast('Error al guardar');
 
-    // Actualiza UI ticket
-    if (el.ticketNo) el.ticketNo.textContent = sale.ticketNo;
+    el.ticketNo && (el.ticketNo.textContent = sale.ticketNo);
 
-    // Cierra modal si aplica
     if (fromModal) closeModal(el.modalPay);
 
-    // Limpia carrito
     cart.clear();
     toast(`Venta OK · ${sale.ticketNo}`);
 
-    // imprimir
     if (state.settings.autoPrint) {
       printSaleLike(sale);
     } else {
-      // si no autoPrint, deja manual o pregunta rápida
-      // (puedes quitar el confirm si quieres aún más rápido)
       if (confirm('¿Imprimir ticket?')) printSaleLike(sale);
     }
   }
@@ -1037,18 +1350,11 @@ Archivo: app.js  (REGENERADO MEJORADO)
   /* =========================
      EMAIL
   ========================== */
-  function openEmailModal() {
-    openModal(el.modalEmail);
-  }
-
   function sendEmailMailto() {
     const to = (el.emailTo?.value || '').trim();
     const extra = (el.emailMsg?.value || '').trim();
 
-    const last = getLastSale();
-    let saleLike = last;
-
-    // si no hay venta, usamos el carrito como preview
+    let saleLike = getLastSale();
     if (!saleLike) {
       const { total } = cart.totals();
       saleLike = {
@@ -1073,7 +1379,246 @@ Archivo: app.js  (REGENERADO MEJORADO)
   }
 
   /* =========================
-     EVENTS
+     BACKUP JSON
+  ========================== */
+  function download(filename, text, mime = 'text/plain') {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 800);
+  }
+
+  function exportJson() {
+    const payload = JSON.stringify(state, null, 2);
+    download(`TPV_BACKUP_${dateKey()}_${state.settings.boxName}.json`, payload, 'application/json');
+    toast('Backup JSON exportado');
+  }
+
+  function importJsonFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const obj = JSON.parse(String(reader.result || ''));
+        // merge con defaults para evitar roturas
+        state = deepMerge(defaultState(), obj);
+        save();
+        toast('JSON importado');
+        renderAll();
+      } catch {
+        toast('JSON inválido');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* =========================
+     CSV Products
+  ========================== */
+  function exportProductsCsv() {
+    const header = ['barcode','name','price','cost','category','fav','unit'];
+    const rows = state.products.map(p => [
+      p.barcode || '',
+      p.name || '',
+      String(p.price ?? ''),
+      p.cost == null ? '' : String(p.cost),
+      p.category || 'Otros',
+      p.fav ? '1' : '0',
+      p.unit || 'ud'
+    ]);
+
+    const esc = (v) => {
+      const s = String(v ?? '');
+      if (/[",\n]/.test(s)) return `"${s.replaceAll('"','""')}"`;
+      return s;
+    };
+
+    const csv = [header.join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
+    download(`TPV_PRODUCTS_${dateKey()}.csv`, csv, 'text/csv');
+    toast('CSV exportado');
+  }
+
+  function parseCsv(text) {
+    // parser simple (maneja comillas)
+    const lines = [];
+    let cur = [];
+    let val = '';
+    let inQ = false;
+
+    for (let i=0;i<text.length;i++){
+      const ch = text[i];
+      const next = text[i+1];
+      if (inQ) {
+        if (ch === '"' && next === '"') { val += '"'; i++; continue; }
+        if (ch === '"') { inQ = false; continue; }
+        val += ch;
+      } else {
+        if (ch === '"') { inQ = true; continue; }
+        if (ch === ',') { cur.push(val); val = ''; continue; }
+        if (ch === '\n') { cur.push(val); lines.push(cur); cur = []; val=''; continue; }
+        if (ch === '\r') continue;
+        val += ch;
+      }
+    }
+    cur.push(val);
+    lines.push(cur);
+    return lines.filter(r => r.some(x => String(x).trim() !== ''));
+  }
+
+  function importProductsCsv(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || '');
+        const rows = parseCsv(text);
+        if (!rows.length) return toast('CSV vacío');
+
+        const header = rows[0].map(h => String(h).trim().toLowerCase());
+        const idx = (name) => header.indexOf(name);
+
+        const iBarcode = idx('barcode');
+        const iName = idx('name');
+        const iPrice = idx('price');
+        const iCost = idx('cost');
+        const iCat = idx('category');
+        const iFav = idx('fav');
+        const iUnit = idx('unit');
+
+        if (iName < 0 || iPrice < 0) return toast('CSV sin columnas mínimas (name,price)');
+
+        let added = 0;
+        for (let r=1;r<rows.length;r++){
+          const row = rows[r];
+          const name = String(row[iName] ?? '').trim();
+          if (!name) continue;
+          const barcode = iBarcode >= 0 ? String(row[iBarcode] ?? '').trim() : '';
+          const price = parseMoney(row[iPrice] ?? '0');
+          const cost = iCost >= 0 && String(row[iCost] ?? '').trim() !== '' ? parseMoney(row[iCost]) : null;
+          const category = iCat >= 0 ? (String(row[iCat] ?? '').trim() || 'Otros') : 'Otros';
+          const fav = iFav >= 0 ? (String(row[iFav] ?? '0').trim() === '1') : false;
+          const unit = iUnit >= 0 ? (String(row[iUnit] ?? 'ud').trim() || 'ud') : 'ud';
+
+          // asegurar categoría existe
+          if (category && !state.categories.some(c => c.toLowerCase() === category.toLowerCase())) state.categories.push(category);
+          ensureOthersCategory();
+
+          addOrUpdateProduct({ barcode, name, price, cost, category, fav, unit });
+          added++;
+        }
+
+        save();
+        renderAll();
+        toast(`CSV importado · ${added} filas`);
+      } catch {
+        toast('Error importando CSV');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* =========================
+     GLOBAL BARCODE SCAN (SIEMPRE ACTIVO)
+     - Detecta ráfagas de teclas rápidas + Enter
+     - Añade producto al instante (aunque estés en otro tab)
+  ========================== */
+  function setupGlobalScan() {
+    let buffer = '';
+    let lastTs = 0;
+    let timer = null;
+
+    const reset = () => { buffer = ''; lastTs = 0; if (timer) clearTimeout(timer); timer = null; };
+
+    const isAllowedChar = (k) => /^[0-9A-Za-z]$/.test(k);
+
+    window.addEventListener('keydown', (e) => {
+      // si hay un dialog abierto y el usuario está escribiendo en un input, no molestamos
+      const openDialog = document.querySelector('dialog[open]');
+      const targetTag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      const typing = (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select');
+
+      // PERO: si el dialog abierto NO es para escribir (o el input no está enfocado), seguimos detectando.
+      // Para evitar interferencias: si está escribiendo normal, ignorar.
+      if (openDialog && typing) return;
+
+      const t = performance.now();
+      const dt = lastTs ? (t - lastTs) : 0;
+      lastTs = t;
+
+      // Enter -> finalizar
+      if (e.key === 'Enter' && buffer.length >= 3) {
+        const code = buffer;
+        reset();
+        handleScannedBarcode(code);
+        return;
+      }
+
+      // Escape -> reset buffer
+      if (e.key === 'Escape') { reset(); return; }
+
+      // Captura caracteres típicos de barcode
+      if (isAllowedChar(e.key)) {
+        // Si dt es grande, probablemente tecleo humano -> reset buffer y empezar desde cero
+        if (dt > 70) buffer = '';
+        buffer += e.key;
+
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => reset(), 160); // si no llega Enter pronto, se limpia
+      } else {
+        // otras teclas rompen buffer si está creciendo
+        if (buffer.length) {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => reset(), 90);
+        }
+      }
+    });
+  }
+
+  function handleScannedBarcode(code) {
+    const bc = String(code || '').trim();
+    if (!bc) return;
+
+    const p = findByBarcode(bc);
+    if (p) {
+      if (state.settings.autoGoSaleOnScan) setTab('venta');
+      cart.addProduct(p, 1);
+      state.settings.beepOnScan && beep();
+      toast(`Escaneo OK: ${p.name}`);
+      return;
+    }
+
+    // No existe -> abrir alta producto con barcode precargado
+    if (state.settings.autoGoSaleOnScan) setTab('venta');
+    openProductModalNew(bc);
+    toast('Barcode no encontrado: alta producto');
+  }
+
+  /* =========================
+     KEYBOARD / KEYPAD (importe rápido)
+  ========================== */
+  function keypadAppend(str) {
+    const cur = String(el.quickAmount?.value || '').trim();
+    const next = (cur + str).replaceAll(',', '.');
+    // permitir solo 1 punto decimal
+    const parts = next.split('.');
+    const clean = parts.length > 2 ? (parts[0] + '.' + parts.slice(1).join('')) : next;
+    el.quickAmount && (el.quickAmount.value = clean.replace('.', ','));
+  }
+
+  function keypadBackspace() {
+    const cur = String(el.quickAmount?.value || '');
+    el.quickAmount && (el.quickAmount.value = cur.slice(0, -1));
+  }
+
+  function keypadClear() {
+    el.quickAmount && (el.quickAmount.value = '');
+  }
+
+  /* =========================
+     BINDINGS
   ========================== */
   function bindTabs() {
     el.tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
@@ -1098,15 +1643,28 @@ Archivo: app.js  (REGENERADO MEJORADO)
     el.btnAdmin?.addEventListener('click', () => openModal(el.modalAdmin));
     el.btnAdminUnlock?.addEventListener('click', () => openModal(el.modalAdmin));
 
-    el.btnQuickAmount?.addEventListener('click', () => openQuickModal('', ''));
-    el.btnPark?.addEventListener('click', () => cart.parkToggle());
-    el.btnAddProductInline?.addEventListener('click', () => { el.modalProduct.dataset.editId = ''; openModal(el.modalProduct); });
-    el.btnAddProduct?.addEventListener('click', () => { el.modalProduct.dataset.editId = ''; openModal(el.modalProduct); });
+    el.btnQuickAmount?.addEventListener('click', () => openModal(el.modalQuick));
+
+    el.btnCats?.addEventListener('click', () => { renderCategoriesUI(); openModal(el.modalCats); });
+    el.btnCats2?.addEventListener('click', () => { renderCategoriesUI(); openModal(el.modalCats); });
+
+    el.btnPark?.addEventListener('click', () => {
+      renderParkedModal();
+      openModal(el.modalParked);
+    });
+
+    el.btnParkNow?.addEventListener('click', () => {
+      parkCurrentTicket();
+      renderParkedModal();
+      renderParkedBadge();
+    });
+
+    el.btnAddProductInline?.addEventListener('click', () => openProductModalNew(''));
+    el.btnAddProduct?.addEventListener('click', () => openProductModalNew(''));
 
     el.btnPrint?.addEventListener('click', () => {
       const last = getLastSale();
       if (last) return printSaleLike(last);
-      // si no hay venta, imprimir preview del carrito
       const { total } = cart.totals();
       if (!(total > 0)) return toast('No hay ticket');
       printSaleLike({
@@ -1123,12 +1681,14 @@ Archivo: app.js  (REGENERADO MEJORADO)
       });
     });
 
-    el.btnEmailTicket?.addEventListener('click', openEmailModal);
     el.btnLastTicket?.addEventListener('click', () => {
       const last = getLastSale();
       if (!last) return toast('No hay último ticket');
       printSaleLike(last);
     });
+
+    el.btnEmailTicket?.addEventListener('click', () => openModal(el.modalEmail));
+    el.btnEmailSend?.addEventListener('click', sendEmailMailto);
 
     el.btnVoid?.addEventListener('click', () => {
       if (!cart.active.lines.length) return;
@@ -1139,18 +1699,15 @@ Archivo: app.js  (REGENERADO MEJORADO)
     });
 
     el.btnRefund?.addEventListener('click', () => {
-      if (!adminUnlocked()) {
-        openModal(el.modalAdmin);
-        return toast('PIN admin requerido');
-      }
+      if (!adminUnlocked()) return (openModal(el.modalAdmin), toast('PIN admin requerido'));
       const last = getLastSale();
       if (!last) return toast('No hay venta');
-      // devolución demo: registra ticket negativo
       const refund = {
         ...last,
         id: uid(),
         ticketNo: nextTicketNo(),
         date: nowEs(),
+        dateKey: dateKey(),
         payMethod: 'devolucion',
         lines: (last.lines || []).map(l => ({ ...l, qty: -Math.abs(l.qty) })),
         total: -Math.abs(last.total),
@@ -1193,15 +1750,14 @@ Archivo: app.js  (REGENERADO MEJORADO)
       toast('Admin desbloqueado (5 min)');
     });
 
-    // pay modal changes
+    // pay modal
     el.payMethod?.addEventListener('change', () => { syncPayUI(); calcPayChange(); });
     el.payGiven?.addEventListener('input', calcPayChange);
     el.payCash?.addEventListener('input', calcPayChange);
     el.payCard?.addEventListener('input', calcPayChange);
-
     el.btnPayOk?.addEventListener('click', () => confirmSaleFromUI({ fromModal: true }));
 
-    // quick modal
+    // quick ok
     el.btnQuickOk?.addEventListener('click', () => {
       const amt = parseMoney(el.quickAmount?.value || '0');
       const name = (el.quickName?.value || 'Importe').trim();
@@ -1209,6 +1765,33 @@ Archivo: app.js  (REGENERADO MEJORADO)
       cart.addManual(amt, name);
       closeModal(el.modalQuick);
       toast('Importe añadido');
+    });
+
+    // keypad
+    el.keypad?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const k = btn.dataset.k;
+      if (!k) return;
+
+      if (k === 'bk') keypadBackspace();
+      else if (k === 'c') keypadClear();
+      else if (k === 'ok') {
+        el.btnQuickOk?.click();
+      } else if (k === '.') {
+        const cur = String(el.quickAmount?.value || '');
+        if (!cur.includes(',') && !cur.includes('.')) keypadAppend('.');
+      } else if (k === '00') keypadAppend('00');
+      else keypadAppend(k);
+    });
+
+    // categories
+    el.btnAddCat?.addEventListener('click', () => {
+      const r = addCategory(el.newCatName?.value || '');
+      if (!r.ok) return toast(r.msg);
+      el.newCatName && (el.newCatName.value = '');
+      toast('Categoría añadida');
+      renderCategoriesUI();
     });
 
     // product save
@@ -1226,80 +1809,63 @@ Archivo: app.js  (REGENERADO MEJORADO)
       if (!name) return toast('Falta nombre');
       if (!(price >= 0)) return toast('Precio inválido');
 
-      const p = addOrUpdateProduct({
-        id: editId || undefined,
-        barcode,
-        name,
-        price,
-        cost,
-        category,
-        fav,
-        unit
-      });
+      // asegurar categoría existe
+      if (category && !state.categories.some(c => c.toLowerCase() === category.toLowerCase())) state.categories.push(category);
+      ensureOthersCategory();
 
-      // limpia dataset edit
+      addOrUpdateProduct({ id: editId || undefined, barcode, name, price, cost, category, fav, unit });
+
       el.modalProduct.dataset.editId = '';
       closeModal(el.modalProduct);
       save();
       renderAll();
       toast('Producto guardado');
-
-      // si venía de escaneo no encontrado y es favorito, se añade rápido
-      if (barcode && el.barcodeInput) el.barcodeInput.value = '';
     });
 
-    // email send
-    el.btnEmailSend?.addEventListener('click', sendEmailMailto);
+    // close Z
+    el.btnCloseZ?.addEventListener('click', () => openCloseZModal());
+    el.zCounted?.addEventListener('input', updateZDiff);
+    el.btnCloseZOk?.addEventListener('click', () => {
+      if (!adminUnlocked()) return (openModal(el.modalAdmin), toast('PIN admin requerido'));
+      saveCloseZ();
+    });
+
+    // export/import json
+    const exportAnyJson = () => exportJson();
+    el.btnExportJson?.addEventListener('click', exportAnyJson);
+    el.btnExportSalesJson?.addEventListener('click', exportAnyJson);
+
+    const triggerImportJson = () => el.fileJson?.click();
+    el.btnImportJson?.addEventListener('click', triggerImportJson);
+    el.btnImportSalesJson?.addEventListener('click', triggerImportJson);
+    el.fileJson?.addEventListener('change', () => {
+      const f = el.fileJson.files?.[0];
+      if (f) importJsonFromFile(f);
+      el.fileJson.value = '';
+    });
+
+    // csv
+    el.btnExportCsv?.addEventListener('click', exportProductsCsv);
+    el.btnImportCsv?.addEventListener('click', () => el.fileCsv?.click());
+    el.fileCsv?.addEventListener('change', () => {
+      const f = el.fileCsv.files?.[0];
+      if (f) importProductsCsv(f);
+      el.fileCsv.value = '';
+    });
   }
 
   function bindPOSInputs() {
-    // keep focus on barcode when clicking outside inputs
-    document.addEventListener('click', (e) => {
-      const t = e.target;
-      if (!t) return;
-      const tag = t.tagName?.toLowerCase();
-      const inDialog = !!t.closest('dialog');
-      if (inDialog) return;
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return;
-      focusBarcodeSoon();
-    });
-
-    // barcode input Enter
+    // barcode input manual (solo por si quieres)
     el.barcodeInput?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
       const code = (el.barcodeInput.value || '').trim();
       el.barcodeInput.value = '';
       if (!code) return;
-
-      const p = findByBarcode(code);
-      if (p) {
-        cart.addProduct(p, 1);
-        toast('Añadido');
-      } else {
-        // abrir alta con barcode precargado
-        el.modalProduct.dataset.editId = '';
-        el.prodBarcode.value = code;
-        el.prodName.value = '';
-        el.prodPrice.value = '';
-        el.prodCost.value = '';
-        el.prodCat.value = 'Otros';
-        el.prodFav.value = '1';
-        el.prodUnit.value = 'ud';
-        openModal(el.modalProduct);
-        toast('Barcode no encontrado: alta producto');
-      }
+      handleScannedBarcode(code);
     });
 
-    // search
     el.searchInput?.addEventListener('input', renderFavorites);
-
-    // chips
-    el.chips.forEach(c => c.addEventListener('click', () => {
-      el.chips.forEach(x => x.classList.remove('is-active'));
-      c.classList.add('is-active');
-      renderFavorites();
-    }));
 
     // pay tabs main
     el.payTabs.forEach(p => p.addEventListener('click', () => {
@@ -1308,14 +1874,11 @@ Archivo: app.js  (REGENERADO MEJORADO)
       cart.active.payMethod = p.dataset.pay || 'efectivo';
       save();
       renderTotals();
-      focusBarcodeSoon();
     }));
 
-    // given + note
     el.givenInput?.addEventListener('input', () => { cart.active.given = parseMoney(el.givenInput.value); save(); renderTotals(); });
     el.noteName?.addEventListener('input', () => { cart.active.noteName = el.noteName.value || ''; save(); });
 
-    // products search in products page
     const reRenderProducts = debounce(renderProductsTable, 80);
     el.prodSearchName?.addEventListener('input', reRenderProducts);
     el.prodSearchBarcode?.addEventListener('input', reRenderProducts);
@@ -1324,12 +1887,14 @@ Archivo: app.js  (REGENERADO MEJORADO)
 
   function bindSettings() {
     // init inputs
-    if (el.setShopName) el.setShopName.value = state.settings.shopName;
-    if (el.setShopSub) el.setShopSub.value = state.settings.shopSub;
-    if (el.setBoxName) el.setBoxName.value = state.settings.boxName;
-    if (el.setFooterText) el.setFooterText.value = state.settings.footerText;
-    if (el.setDirectPay) el.setDirectPay.value = state.settings.directPay ? '1' : '0';
-    if (el.setAutoPrint) el.setAutoPrint.value = state.settings.autoPrint ? '1' : '0';
+    el.setShopName && (el.setShopName.value = state.settings.shopName);
+    el.setShopSub && (el.setShopSub.value = state.settings.shopSub);
+    el.setBoxName && (el.setBoxName.value = state.settings.boxName);
+    el.setFooterText && (el.setFooterText.value = state.settings.footerText);
+    el.setDirectPay && (el.setDirectPay.value = state.settings.directPay ? '1' : '0');
+    el.setAutoPrint && (el.setAutoPrint.value = state.settings.autoPrint ? '1' : '0');
+    el.setAutoGoSale && (el.setAutoGoSale.value = state.settings.autoGoSaleOnScan ? '1' : '0');
+    el.setBeep && (el.setBeep.value = state.settings.beepOnScan ? '1' : '0');
 
     const apply = debounce(() => {
       state.settings.shopName = el.setShopName?.value || state.settings.shopName;
@@ -1338,6 +1903,8 @@ Archivo: app.js  (REGENERADO MEJORADO)
       state.settings.footerText = el.setFooterText?.value || state.settings.footerText;
       state.settings.directPay = (el.setDirectPay?.value || '0') === '1';
       state.settings.autoPrint = (el.setAutoPrint?.value || '0') === '1';
+      state.settings.autoGoSaleOnScan = (el.setAutoGoSale?.value || '1') === '1';
+      state.settings.beepOnScan = (el.setBeep?.value || '1') === '1';
       save();
       renderHeader();
     }, 120);
@@ -1348,6 +1915,8 @@ Archivo: app.js  (REGENERADO MEJORADO)
     el.setFooterText?.addEventListener('input', apply);
     el.setDirectPay?.addEventListener('change', apply);
     el.setAutoPrint?.addEventListener('change', apply);
+    el.setAutoGoSale?.addEventListener('change', apply);
+    el.setBeep?.addEventListener('change', apply);
 
     // set admin pin (hash)
     el.setAdminPin?.addEventListener('change', async () => {
@@ -1361,16 +1930,13 @@ Archivo: app.js  (REGENERADO MEJORADO)
     });
   }
 
-  /* =========================
-     SHORTCUTS
-  ========================== */
   function bindShortcuts() {
     window.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       const typing = (tag === 'input' || tag === 'textarea' || tag === 'select');
 
       if (e.key === 'F4') { e.preventDefault(); state.settings.directPay ? confirmSaleFromUI({ fromModal:false }) : openPayModal(); return; }
-      if (e.key === 'F2') { e.preventDefault(); openQuickModal('', ''); return; }
+      if (e.key === 'F2') { e.preventDefault(); openModal(el.modalQuick); return; }
 
       if (e.key === 'Escape') {
         const open = document.querySelector('dialog[open]');
@@ -1400,8 +1966,6 @@ Archivo: app.js  (REGENERADO MEJORADO)
         cart.inc(cart.active.lines.length - 1, -1);
         return;
       }
-
-      if (e.key === 'Enter' && !typing) focusBarcodeSoon();
     });
   }
 
@@ -1410,14 +1974,11 @@ Archivo: app.js  (REGENERADO MEJORADO)
   ========================== */
   async function init() {
     await ensureDefaultHashes();
+    ensureOthersCategory();
 
-    // theme
     setTheme(state.settings.theme || 'day');
-
-    // default tab
     setTab('venta');
 
-    // bind
     bindTabs();
     bindTheme();
     bindModals();
@@ -1425,12 +1986,12 @@ Archivo: app.js  (REGENERADO MEJORADO)
     bindSettings();
     bindShortcuts();
 
-    // render
-    renderAll();
-    focusBarcodeSoon();
+    setupGlobalScan(); // <<<<<< SIEMPRE escuchando barcode
 
-    // update clock
-    setInterval(() => { if (el.ticketDate) el.ticketDate.textContent = nowEs(); }, 15000);
+    renderAll();
+
+    // clock
+    setInterval(() => { el.ticketDate && (el.ticketDate.textContent = nowEs()); }, 15000);
   }
 
   init();
