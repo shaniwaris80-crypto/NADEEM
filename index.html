@@ -1,15 +1,13 @@
 <!-- =========================
-TPV NADEEM LOCUTORIO — B/W PRO (PAQUETE PRO+)
+TPV NADEEM LOCUTORIO — B/W PRO (PAQUETE PRO)
 Archivo: index.html
-Requisitos incluidos:
-- Escucha permanente de barcode (global)
-- Categorías (crear/renombrar/asignar) bajo barcode/buscar
-- Grid productos por categoría
-- Cobro PRO: billetes/monedas + teclado + cambio en grande
+- Escucha permanente de escaneo (barcode)
+- Categorías debajo de barcode/buscar + grid por categoría
+- Cobro PRO: billetes + teclado numérico + cambio (sin flash, sin ocultar)
 - Impresión ON/OFF (si OFF no abre impresión)
-- Cierre Z: imprime resumen + descuadre +/- + archiva día + limpia ventas abiertas
-- Reportes: diario/semanal/mensual/personalizado
-- Crédito: footer + Ajustes→About plegable
+- Cierre Z: imprime resumen Z + descuadre + cierra día (limpia ventas “abiertas” pero guarda en reportes)
+- Reportes: diarios/semanales/mensuales/personalizados
+- Crédito: footer + Ajustes → About plegable
 ========================= -->
 <!doctype html>
 <html lang="es">
@@ -18,9 +16,7 @@ Requisitos incluidos:
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
   <title>TPV NADEEM LOCUTORIO — B/W PRO</title>
-
-  <!-- Cache-busting para GitHub Pages -->
-  <link rel="stylesheet" href="./styles.css?v=1.3" />
+  <link rel="stylesheet" href="./styles.css?v=pro-1.0" />
 </head>
 
 <body class="theme-day">
@@ -51,11 +47,6 @@ Requisitos incluidos:
           <span id="themeLabel">Día</span>
         </button>
 
-        <button class="btn btn-ghost" id="btnPrintToggle" type="button" title="Impresión ON/OFF">
-          <span class="print-dot" id="printDot" aria-hidden="true"></span>
-          <span id="printLabel">Impresión ON</span>
-        </button>
-
         <button class="btn btn-ghost" id="btnLogin" type="button" title="Cambiar usuario">
           <span class="icon" aria-hidden="true">👤</span>
           <span id="userLabel">CAJERO</span>
@@ -72,19 +63,19 @@ Requisitos incluidos:
     <main class="main">
 
       <!-- =========================
-           TAB: VENTA (DEFAULT)
+           TAB: VENTA
       ========================== -->
       <section class="page is-active" data-page="venta">
         <div class="pos-grid">
 
-          <!-- ===== LEFT ===== -->
+          <!-- ===== LEFT: CATEGORÍAS + PRODUCTOS ===== -->
           <section class="panel panel-left">
             <div class="panel-head">
               <div class="panel-title">
                 <h2>Venta rápida</h2>
                 <p>
-                  <span class="scan-dot" id="scanDot" aria-hidden="true"></span>
-                  <span class="muted">Escaneo activo</span>
+                  <span class="scan-pill" id="scanPill" aria-hidden="true">SCAN</span>
+                  <span class="muted">Escucha permanente</span>
                 </p>
               </div>
 
@@ -100,18 +91,18 @@ Requisitos incluidos:
               <div class="field-row">
                 <label class="field">
                   <span>Escanear / Barcode</span>
-                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (siempre enfocado)" />
-                  <small>Si haces click fuera, el sistema sigue capturando escaneos del lector.</small>
+                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea (se añade al instante)" />
+                  <small>El sistema escucha aunque no estés en el input (lector tipo teclado).</small>
                 </label>
 
                 <label class="field">
                   <span>Buscar producto</span>
                   <input id="searchInput" autocomplete="off" placeholder="Nombre o barcode…" />
-                  <small>Filtra el grid según la categoría seleccionada.</small>
+                  <small>Filtra los productos de la categoría seleccionada.</small>
                 </label>
               </div>
 
-              <!-- CATEGORÍAS: debajo de barcode/buscar -->
+              <!-- CATEGORÍAS (debajo de barcode/buscar) -->
               <div class="cat-bar">
                 <div class="cat-title">Categorías</div>
                 <div class="cat-actions">
@@ -119,6 +110,7 @@ Requisitos incluidos:
                   <button class="btn btn-ghost btn-small" id="btnManageCategories" type="button">Gestionar</button>
                 </div>
               </div>
+
               <div class="cat-chips" id="catChips"></div>
             </div>
 
@@ -143,7 +135,7 @@ Requisitos incluidos:
             </div>
           </section>
 
-          <!-- ===== RIGHT ===== -->
+          <!-- ===== RIGHT: TICKET + COBRO ===== -->
           <section class="panel panel-right">
             <div class="panel-head">
               <div class="panel-title">
@@ -152,8 +144,14 @@ Requisitos incluidos:
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último ticket">Último</button>
+                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último">Último</button>
                 <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar ticket por email">Email</button>
+
+                <!-- Impresión ON/OFF -->
+                <button class="btn btn-soft" id="btnPrintToggle" type="button" title="Impresión ON/OFF">
+                  Impresión: <span class="mono" id="printState">ON</span>
+                </button>
+
                 <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir ticket (80mm)">Imprimir</button>
               </div>
             </div>
@@ -220,6 +218,16 @@ Requisitos incluidos:
                       <input id="noteName" placeholder="Ej: Cliente / Nota…" />
                     </label>
                   </div>
+
+                  <!-- Billetes rápidos (en panel, no modal) -->
+                  <div class="bill-row" aria-label="Billetes rápidos">
+                    <button class="bill" type="button" data-bill="5">+5</button>
+                    <button class="bill" type="button" data-bill="10">+10</button>
+                    <button class="bill" type="button" data-bill="20">+20</button>
+                    <button class="bill" type="button" data-bill="50">+50</button>
+                    <button class="bill bill-fn" type="button" data-bill="exacto">Exacto</button>
+                    <button class="bill bill-fn" type="button" data-bill="clear">C</button>
+                  </div>
                 </div>
 
                 <div class="cta-row">
@@ -228,7 +236,18 @@ Requisitos incluidos:
                   <button class="btn btn-primary" id="btnPay" type="button">Cobrar</button>
                 </div>
 
-                <div class="mini-note muted">Ticket 80mm · Impresión ON/OFF · Email (mailto)</div>
+                <div class="mini-note muted">Ticket 80mm · IVA incluido · Impresión ON/OFF</div>
+              </div>
+            </div>
+
+            <!-- Acceso rápido a Cierre Z desde venta -->
+            <div class="card">
+              <div class="zbar">
+                <div>
+                  <div class="line-name">Cierre del día (Z)</div>
+                  <div class="line-sub muted">Imprime resumen Z · descuadre ± · cierra día</div>
+                </div>
+                <button class="btn btn-admin" id="btnOpenZ" type="button">Cierre Z</button>
               </div>
             </div>
 
@@ -276,8 +295,8 @@ Requisitos incluidos:
             <div class="trow thead">
               <div class="tcell">Producto</div>
               <div class="tcell">Barcode</div>
-              <div class="tcell tcell-right">PVP</div>
-              <div class="tcell tcell-right">Compra</div>
+              <div class="tcell tcell-right">PVP (IVA incl.)</div>
+              <div class="tcell tcell-right">Compra (opc.)</div>
               <div class="tcell">Categoría</div>
               <div class="tcell tcell-center">Fav</div>
               <div class="tcell tcell-right">Acciones</div>
@@ -287,31 +306,31 @@ Requisitos incluidos:
       </section>
 
       <!-- =========================
-           TAB: REPORTES (Diario/Semanal/Mensual/Rango)
+           TAB: REPORTES
       ========================== -->
       <section class="page" data-page="reportes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Reportes</h2>
-              <p>Diario · Semanal · Mensual · Personalizado (ventas cerradas + abiertas si corresponde).</p>
+              <p>Diarios, semanales, mensuales, rango personalizado. Ventas “abiertas” se limpian al cerrar día.</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnExportSalesCsv" type="button">Exportar ventas CSV</button>
-              <button class="btn btn-soft" id="btnCloseZ" type="button">Cierre Z</button>
+              <button class="btn btn-soft" id="btnExportZCsv" type="button">Exportar cierres Z CSV</button>
             </div>
           </div>
 
-          <div class="card report-filter">
-            <div class="field-row report-row">
+          <div class="card">
+            <div class="field-row">
               <label class="field">
                 <span>Rango</span>
                 <select id="repPreset">
-                  <option value="today">Hoy (abierto)</option>
-                  <option value="yesterday">Ayer</option>
-                  <option value="week">Esta semana</option>
-                  <option value="month">Este mes</option>
-                  <option value="custom">Personalizado</option>
+                  <option value="hoy">Hoy</option>
+                  <option value="ayer">Ayer</option>
+                  <option value="semana">Esta semana</option>
+                  <option value="mes">Este mes</option>
+                  <option value="personal">Personalizado</option>
                 </select>
               </label>
               <label class="field">
@@ -323,33 +342,29 @@ Requisitos incluidos:
                 <input id="repTo" type="date" />
               </label>
             </div>
+          </div>
 
-            <div class="report-kpis">
-              <div class="kpi">
-                <div class="kpi-label">Tickets</div>
-                <div class="kpi-value mono" id="statTickets">0</div>
+          <div class="grid-2">
+            <div class="card">
+              <h3>Resumen</h3>
+              <div class="stat-grid">
+                <div class="stat"><div class="stat-label">Tickets</div><div class="stat-value mono" id="statTickets">0</div></div>
+                <div class="stat"><div class="stat-label">Total</div><div class="stat-value mono" id="statTotal">0,00 €</div></div>
+                <div class="stat"><div class="stat-label">Efectivo</div><div class="stat-value mono" id="statCash">0,00 €</div></div>
+                <div class="stat"><div class="stat-label">Tarjeta</div><div class="stat-value mono" id="statCard">0,00 €</div></div>
               </div>
-              <div class="kpi">
-                <div class="kpi-label">Total</div>
-                <div class="kpi-value mono" id="statTotal">0,00 €</div>
-              </div>
-              <div class="kpi">
-                <div class="kpi-label">Efectivo</div>
-                <div class="kpi-value mono" id="statCash">0,00 €</div>
-              </div>
-              <div class="kpi">
-                <div class="kpi-label">Tarjeta</div>
-                <div class="kpi-value mono" id="statCard">0,00 €</div>
-              </div>
-              <div class="kpi">
-                <div class="kpi-label">Beneficio</div>
-                <div class="kpi-value mono" id="statProfit">0,00 €</div>
+
+              <div class="hint" style="margin:14px 0 0;">
+                <div class="hint-title">Top productos</div>
+                <div class="hint-body muted" id="topProducts">—</div>
               </div>
             </div>
 
-            <div class="hint">
-              <div class="hint-title">Cierre Z</div>
-              <div class="hint-body" id="zInfo">—</div>
+            <div class="card">
+              <h3>Cierres Z</h3>
+              <div class="chart-placeholder">
+                <div class="muted" id="zInfo">Sin cierres.</div>
+              </div>
             </div>
           </div>
 
@@ -366,14 +381,14 @@ Requisitos incluidos:
       </section>
 
       <!-- =========================
-           TAB: AJUSTES (Admin)
+           TAB: AJUSTES
       ========================== -->
       <section class="page" data-page="ajustes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Negocio, caja, seguridad, impresión, escáner.</p>
+              <p>Negocio, caja, impresión, escáner, seguridad.</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -406,36 +421,21 @@ Requisitos incluidos:
             </div>
 
             <div class="card">
-              <h3>Modo rápido</h3>
+              <h3>Impresión</h3>
               <div class="field-row">
                 <label class="field">
-                  <span>Cobro directo (sin modal)</span>
-                  <select id="setDirectPay">
-                    <option value="0">No</option>
-                    <option value="1">Sí</option>
-                  </select>
-                </label>
-                <label class="field">
                   <span>Impresión (ON/OFF)</span>
-                  <select id="setPrintOn">
+                  <select id="setPrintEnabled">
                     <option value="1">ON</option>
                     <option value="0">OFF</option>
                   </select>
+                  <small>Si está OFF, no se abrirá el panel de impresión.</small>
                 </label>
-              </div>
-              <div class="field-row">
                 <label class="field">
-                  <span>Auto-imprimir al cobrar</span>
+                  <span>Auto-imprimir tras cobrar</span>
                   <select id="setAutoPrint">
                     <option value="0">No</option>
                     <option value="1">Sí</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Imprimir cierre Z al cerrar</span>
-                  <select id="setPrintZ">
-                    <option value="1">Sí</option>
-                    <option value="0">No</option>
                   </select>
                 </label>
               </div>
@@ -447,7 +447,7 @@ Requisitos incluidos:
               <h3>Escáner</h3>
               <div class="field-row">
                 <label class="field">
-                  <span>Siempre escuchar escaneo</span>
+                  <span>Siempre escuchar escáner</span>
                   <select id="setAlwaysScan">
                     <option value="1">Sí</option>
                     <option value="0">No</option>
@@ -456,7 +456,7 @@ Requisitos incluidos:
                 <label class="field">
                   <span>Velocidad escáner (ms)</span>
                   <input id="setScanSpeed" inputmode="numeric" placeholder="35" />
-                  <small>Recomendado 30–45. Menor = más estricto (lector).</small>
+                  <small>Recomendado 30–45 (más bajo = más “lector”).</small>
                 </label>
               </div>
             </div>
@@ -470,9 +470,8 @@ Requisitos incluidos:
                   <small>Por defecto: 1234</small>
                 </label>
                 <label class="field">
-                  <span>Auto-bloqueo Admin (min)</span>
+                  <span>Auto-bloqueo admin (min)</span>
                   <input id="setAutoLockMin" inputmode="numeric" placeholder="10" />
-                  <small>Bloquea Admin tras X min sin actividad.</small>
                 </label>
               </div>
             </div>
@@ -481,31 +480,35 @@ Requisitos incluidos:
           <!-- ABOUT PLEGABLE -->
           <div class="card">
             <details class="about" id="aboutBox">
-              <summary class="about-sum">About</summary>
+              <summary class="about-summary">
+                <span>About</span>
+                <span class="muted small">TPV NADEEM LOCUTORIO</span>
+              </summary>
+
               <div class="about-body">
-                <div class="about-title">TPV NADEEM LOCUTORIO</div>
-                <div class="about-row"><span class="muted">Versión:</span> <span class="mono" id="aboutVer">v1.3</span></div>
-                <div class="about-row"><span class="muted">Modo:</span> <span class="mono">Local (GitHub Pages) · IVA incluido</span></div>
-                <div class="about-row"><span class="muted">Crédito:</span> <span class="mono">Made by Arslan Waris · All rights reserved</span></div>
+                <div class="about-line"><strong>Software:</strong> TPV NADEEM LOCUTORIO</div>
+                <div class="about-line"><strong>Versión:</strong> <span class="mono" id="aboutVersion">pro-1.0</span></div>
+                <div class="about-line"><strong>Autor:</strong> Made by Arslan Waris · All rights reserved</div>
+                <div class="about-line"><strong>Modo:</strong> Local (GitHub Pages) · IVA incluido</div>
                 <div class="about-actions">
                   <button class="btn btn-soft" id="btnCopyAbout" type="button">Copiar info</button>
                 </div>
               </div>
             </details>
           </div>
-
         </div>
       </section>
 
     </main>
 
+    <!-- ===== FOOTER ===== -->
     <footer class="footer">
       <div class="footer-left">
         <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right">
-        <span class="credit mono">Made by Arslan Waris · All rights reserved</span>
+      <div class="footer-right muted credit">
+        Made by Arslan Waris · All rights reserved
       </div>
     </footer>
   </div>
@@ -522,10 +525,6 @@ Requisitos incluidos:
   <!-- Hidden file inputs -->
   <input id="fileCsv" type="file" accept=".csv,text/csv" hidden />
   <input id="fileJson" type="file" accept=".json,application/json" hidden />
-
-  <!-- =========================
-       MODALS
-  ========================== -->
 
   <!-- LOGIN -->
   <dialog class="modal" id="modalLogin" aria-label="Login">
@@ -575,119 +574,12 @@ Requisitos incluidos:
     </div>
   </dialog>
 
-  <!-- COBRO PRO -->
-  <dialog class="modal" id="modalPay" aria-label="Cobro">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Cobrar</div>
-        <div class="muted small">Billetes · teclado · cambio</div>
-      </div>
-      <button class="icon-btn" data-close="modalPay" aria-label="Cerrar">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <div class="pay-confirm">
-        <div class="pay-big">
-          <div>
-            <div class="muted">Total</div>
-            <div class="pay-total mono" id="payTotal">0,00 €</div>
-          </div>
-          <div class="change-big">
-            <div class="muted">Cambio</div>
-            <div class="change-value mono" id="payChangeBig">0,00 €</div>
-          </div>
-        </div>
-
-        <div class="field-row pay-row">
-          <label class="field">
-            <span>Método</span>
-            <select id="payMethod">
-              <option value="efectivo">Efectivo</option>
-              <option value="tarjeta">Tarjeta</option>
-              <option value="mixto">Mixto</option>
-            </select>
-          </label>
-
-          <label class="field" id="payGivenWrap">
-            <span>Entregado</span>
-            <input id="payGiven" inputmode="decimal" placeholder="0,00" />
-          </label>
-
-          <label class="field" id="payCardOnlyWrap">
-            <span>Tarjeta</span>
-            <input id="payCardOnly" inputmode="decimal" placeholder="0,00" />
-            <small>Opcional (para registro).</small>
-          </label>
-        </div>
-
-        <div class="field-row" id="paySplitWrap" hidden>
-          <label class="field">
-            <span>Efectivo (mixto)</span>
-            <input id="payCash" inputmode="decimal" placeholder="0,00" />
-          </label>
-          <label class="field">
-            <span>Tarjeta (mixto)</span>
-            <input id="payCard" inputmode="decimal" placeholder="0,00" />
-          </label>
-        </div>
-
-        <!-- Botones billetes/monedas -->
-        <div class="moneybar" id="moneyBar" aria-label="Billetes y monedas">
-          <button class="mbtn" data-add="5">5€</button>
-          <button class="mbtn" data-add="10">10€</button>
-          <button class="mbtn" data-add="20">20€</button>
-          <button class="mbtn" data-add="50">50€</button>
-          <button class="mbtn" data-add="1">1€</button>
-          <button class="mbtn" data-add="2">2€</button>
-          <button class="mbtn" data-add="0.5">0,50€</button>
-          <button class="mbtn" data-add="0.2">0,20€</button>
-          <button class="mbtn" data-add="0.1">0,10€</button>
-          <button class="mbtn mbtn-fn" data-add="exact">Exacto</button>
-          <button class="mbtn mbtn-fn" data-add="clear">C</button>
-        </div>
-
-        <!-- Teclado numérico para Entregado -->
-        <div class="keypad paypad" id="payKeypad">
-          <button class="key" data-k="7">7</button>
-          <button class="key" data-k="8">8</button>
-          <button class="key" data-k="9">9</button>
-          <button class="key key-fn" data-k="bk">⌫</button>
-
-          <button class="key" data-k="4">4</button>
-          <button class="key" data-k="5">5</button>
-          <button class="key" data-k="6">6</button>
-          <button class="key key-fn" data-k="c">C</button>
-
-          <button class="key" data-k="1">1</button>
-          <button class="key" data-k="2">2</button>
-          <button class="key" data-k="3">3</button>
-          <button class="key key-fn" data-k=".">,</button>
-
-          <button class="key key-wide" data-k="0">0</button>
-          <button class="key" data-k="00">00</button>
-          <button class="key key-ok" data-k="ok">COBRAR</button>
-        </div>
-
-        <label class="field">
-          <span>Nombre / nota (opcional)</span>
-          <input id="payNote" placeholder="Ej: cliente…" />
-        </label>
-      </div>
-    </div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modalPay" type="button">Cancelar</button>
-      <button class="btn btn-soft" id="btnPayNoPrint" type="button">Cobrar sin imprimir</button>
-      <button class="btn btn-primary" id="btnPayOk" type="button">Cobrar</button>
-    </div>
-  </dialog>
-
-  <!-- IMPORTE RÁPIDO (teclado) -->
+  <!-- IMPORTE RÁPIDO (TECLADO NUMÉRICO) -->
   <dialog class="modal" id="modalQuick" aria-label="Importe rápido">
     <div class="modal-head">
       <div>
         <div class="modal-title">Importe rápido</div>
-        <div class="muted small">Añade una línea manual</div>
+        <div class="muted small">Añade una línea manual al ticket</div>
       </div>
       <button class="icon-btn" data-close="modalQuick" aria-label="Cerrar">✕</button>
     </div>
@@ -704,30 +596,11 @@ Requisitos incluidos:
         </label>
       </div>
 
-      <div class="keypad" id="keypad">
-        <button class="key" data-k="7">7</button>
-        <button class="key" data-k="8">8</button>
-        <button class="key" data-k="9">9</button>
-        <button class="key key-fn" data-k="bk">⌫</button>
-
-        <button class="key" data-k="4">4</button>
-        <button class="key" data-k="5">5</button>
-        <button class="key" data-k="6">6</button>
-        <button class="key key-fn" data-k="c">C</button>
-
-        <button class="key" data-k="1">1</button>
-        <button class="key" data-k="2">2</button>
-        <button class="key" data-k="3">3</button>
-        <button class="key key-fn" data-k=".">,</button>
-
-        <button class="key key-wide" data-k="0">0</button>
-        <button class="key" data-k="00">00</button>
-        <button class="key key-ok" data-k="ok">OK</button>
-      </div>
-
-      <div class="hint">
-        <div class="hint-title">Atajo</div>
-        <div class="hint-body"><span class="kbd">F2</span></div>
+      <div class="keypad" id="keypadQuick">
+        <button class="key" data-k="7">7</button><button class="key" data-k="8">8</button><button class="key" data-k="9">9</button><button class="key key-fn" data-k="bk">⌫</button>
+        <button class="key" data-k="4">4</button><button class="key" data-k="5">5</button><button class="key" data-k="6">6</button><button class="key key-fn" data-k="c">C</button>
+        <button class="key" data-k="1">1</button><button class="key" data-k="2">2</button><button class="key" data-k="3">3</button><button class="key key-fn" data-k=",">,</button>
+        <button class="key key-wide" data-k="0">0</button><button class="key" data-k="00">00</button><button class="key key-ok" data-k="ok">OK</button>
       </div>
     </div>
 
@@ -755,7 +628,7 @@ Requisitos incluidos:
         </label>
         <label class="field">
           <span>Nombre</span>
-          <input id="prodName" placeholder="Ej: Producto…" />
+          <input id="prodName" placeholder="Ej: Plátano…" />
         </label>
       </div>
 
@@ -798,7 +671,7 @@ Requisitos incluidos:
     </div>
   </dialog>
 
-  <!-- CATEGORÍAS (gestión) -->
+  <!-- CATEGORÍAS -->
   <dialog class="modal" id="modalCats" aria-label="Categorías">
     <div class="modal-head">
       <div>
@@ -821,10 +694,6 @@ Requisitos incluidos:
       </div>
 
       <div class="cat-list" id="catList"></div>
-      <div class="hint">
-        <div class="hint-title">Nota</div>
-        <div class="hint-body">Renombrar cambia la categoría en todos los productos.</div>
-      </div>
     </div>
 
     <div class="modal-foot">
@@ -841,7 +710,6 @@ Requisitos incluidos:
       </div>
       <button class="icon-btn" data-close="modalPark" aria-label="Cerrar">✕</button>
     </div>
-
     <div class="modal-body">
       <div class="field-row">
         <label class="field">
@@ -855,7 +723,6 @@ Requisitos incluidos:
       </div>
       <div class="park-list" id="parkList"></div>
     </div>
-
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalPark" type="button">Cerrar</button>
     </div>
@@ -866,47 +733,33 @@ Requisitos incluidos:
     <div class="modal-head">
       <div>
         <div class="modal-title">Cierre Z</div>
-        <div class="muted small">Descuadre +/- · Archivar día · Limpiar ventas abiertas</div>
+        <div class="muted small">Imprime Z · descuadre ± · cierra día</div>
       </div>
       <button class="icon-btn" data-close="modalZ" aria-label="Cerrar">✕</button>
     </div>
-
     <div class="modal-body">
-      <div class="hint">
+      <div class="hint" style="margin:0;">
         <div class="hint-title">Esperado</div>
         <div class="hint-body" id="zExpected">—</div>
       </div>
-
-      <div class="field-row">
+      <div class="field-row" style="margin-top:12px;">
         <label class="field">
           <span>Efectivo contado (€)</span>
           <input id="zCashCounted" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
-          <span>Descuadre</span>
-          <input id="zDiff" disabled placeholder="0,00" />
-          <small>Contado - Esperado (puede ser + o -)</small>
-        </label>
-      </div>
-
-      <div class="field-row">
-        <label class="field">
           <span>Nota (opcional)</span>
           <input id="zNote" placeholder="Ej: descuadre por…" />
         </label>
-        <label class="field">
-          <span>Acción</span>
-          <select id="zAction">
-            <option value="close">Cerrar día (archivar + limpiar)</option>
-            <option value="print">Solo imprimir Z</option>
-          </select>
-        </label>
+      </div>
+      <div class="hint" style="margin:0;">
+        <div class="hint-title">Descuadre</div>
+        <div class="hint-body" id="zDiff">—</div>
       </div>
     </div>
-
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalZ" type="button">Cancelar</button>
-      <button class="btn btn-primary" id="btnZOk" type="button">Confirmar</button>
+      <button class="btn btn-primary" id="btnZOk" type="button">Imprimir + Cerrar día</button>
     </div>
   </dialog>
 
@@ -919,7 +772,6 @@ Requisitos incluidos:
       </div>
       <button class="icon-btn" data-close="modalEmail" aria-label="Cerrar">✕</button>
     </div>
-
     <div class="modal-body">
       <label class="field">
         <span>Email</span>
@@ -930,13 +782,12 @@ Requisitos incluidos:
         <textarea id="emailMsg" rows="4" placeholder="Mensaje extra…"></textarea>
       </label>
     </div>
-
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalEmail" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnEmailSend" type="button">Abrir email</button>
     </div>
   </dialog>
 
-  <script src="./app.js?v=1.3" defer></script>
+  <script src="./app.js?v=pro-1.0" defer></script>
 </body>
 </html>
