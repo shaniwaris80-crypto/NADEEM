@@ -1,17 +1,25 @@
-  <!-- =========================================
-TPV NADEEM — B/W PRO (Paquete PRO)
-PARTE 1/2 — index.html
-Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
-========================================= -->
+<!-- =========================
+TPV NADEEM LOCUTORIO — B/W PRO (PAQUETE PRO+)
+Archivo: index.html
+Requisitos incluidos:
+- Escucha permanente de barcode (global)
+- Categorías (crear/renombrar/asignar) bajo barcode/buscar
+- Grid productos por categoría
+- Cobro PRO: billetes/monedas + teclado + cambio en grande
+- Impresión ON/OFF (si OFF no abre impresión)
+- Cierre Z: imprime resumen + descuadre +/- + archiva día + limpia ventas abiertas
+- Reportes: diario/semanal/mensual/personalizado
+- Crédito: footer + Ajustes→About plegable
+========================= -->
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
-  <title>TPV NADEEM — B/W PRO</title>
+  <title>TPV NADEEM LOCUTORIO — B/W PRO</title>
 
-  <!-- cache-busting -->
+  <!-- Cache-busting para GitHub Pages -->
   <link rel="stylesheet" href="./styles.css?v=1.3" />
 </head>
 
@@ -23,7 +31,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       <div class="brand">
         <div class="logo" aria-hidden="true">TPV</div>
         <div class="brand-text">
-          <div class="brand-title">TPV NADEEM</div>
+          <div class="brand-title">TPV NADEEM LOCUTORIO</div>
           <div class="brand-sub">B/W PRO · IVA incluido</div>
         </div>
       </div>
@@ -69,14 +77,14 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       <section class="page is-active" data-page="venta">
         <div class="pos-grid">
 
-          <!-- ===== LEFT: SCAN + CATS + PRODUCTOS ===== -->
+          <!-- ===== LEFT ===== -->
           <section class="panel panel-left">
             <div class="panel-head">
               <div class="panel-title">
                 <h2>Venta rápida</h2>
                 <p>
                   <span class="scan-dot" id="scanDot" aria-hidden="true"></span>
-                  <span class="muted">Siempre escuchando escaneo</span>
+                  <span class="muted">Escaneo activo</span>
                 </p>
               </div>
 
@@ -93,17 +101,17 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
                 <label class="field">
                   <span>Escanear / Barcode</span>
                   <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (siempre enfocado)" />
-                  <small>El sistema también captura escaneo global (sin tocar el input).</small>
+                  <small>Si haces click fuera, el sistema sigue capturando escaneos del lector.</small>
                 </label>
 
                 <label class="field">
                   <span>Buscar producto</span>
                   <input id="searchInput" autocomplete="off" placeholder="Nombre o barcode…" />
-                  <small>Filtra el grid de la categoría seleccionada.</small>
+                  <small>Filtra el grid según la categoría seleccionada.</small>
                 </label>
               </div>
 
-              <!-- CATEGORÍAS (debajo de barcode + buscar) -->
+              <!-- CATEGORÍAS: debajo de barcode/buscar -->
               <div class="cat-bar">
                 <div class="cat-title">Categorías</div>
                 <div class="cat-actions">
@@ -111,7 +119,6 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
                   <button class="btn btn-ghost btn-small" id="btnManageCategories" type="button">Gestionar</button>
                 </div>
               </div>
-
               <div class="cat-chips" id="catChips"></div>
             </div>
 
@@ -127,15 +134,16 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
             <div class="hint">
               <div class="hint-title">Atajos</div>
               <div class="hint-body">
-                <span class="kbd">F4</span> Cobrar efectivo ·
+                <span class="kbd">F4</span> Cobrar ·
                 <span class="kbd">F2</span> Importe rápido ·
                 <span class="kbd">Supr</span> Borrar última ·
-                <span class="kbd">Esc</span> Cerrar/limpiar
+                <span class="kbd">Esc</span> Limpiar/Salir ·
+                <span class="kbd">+</span>/<span class="kbd">-</span> Qty última
               </div>
             </div>
           </section>
 
-          <!-- ===== RIGHT: TICKET + COBRO HÍBRIDO ===== -->
+          <!-- ===== RIGHT ===== -->
           <section class="panel panel-right">
             <div class="panel-head">
               <div class="panel-title">
@@ -144,7 +152,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último">Último</button>
+                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último ticket">Último</button>
                 <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar ticket por email">Email</button>
                 <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir ticket (80mm)">Imprimir</button>
               </div>
@@ -191,53 +199,39 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
                   </div>
                 </div>
 
-                <!-- ===== COBRO HÍBRIDO (PANEL FIJO) ===== -->
-                <div class="pay-hybrid">
-                  <div class="pay-row">
-                    <button class="btn btn-card" id="btnCardOneTap" type="button" title="Cierra ticket como TARJETA (sin abrir nada)">
-                      SOLO TARJETA
-                    </button>
+                <div class="pay-grid">
+                  <div class="pay-tabs" role="tablist" aria-label="Método de pago">
+                    <button class="pay-tab is-active" type="button" data-pay="efectivo">Efectivo</button>
+                    <button class="pay-tab" type="button" data-pay="tarjeta">Tarjeta</button>
+                    <button class="pay-tab" type="button" data-pay="mixto">Mixto</button>
                   </div>
 
-                  <div class="pay-row pay-row-2">
-                    <button class="pay-mode is-active" id="payModeCash" type="button">Efectivo</button>
-                    <button class="pay-mode" id="payModeMix" type="button" title="Abre detalles para mixto">Mixto</button>
-                    <button class="pay-mode" id="payModeMore" type="button" title="Detalles (descuento / nota / mixto)">Detalles</button>
-                  </div>
-
-                  <div class="pay-cash" id="cashPanel">
-                    <div class="cash-top">
-                      <label class="field">
-                        <span>Entregado</span>
-                        <input id="cashGiven" inputmode="decimal" placeholder="0,00" />
-                      </label>
-                      <label class="field">
-                        <span>Cambio</span>
-                        <input id="cashChange" disabled placeholder="0,00" />
-                      </label>
-                    </div>
-
-                    <div class="bill-row">
-                      <button class="bill" data-bill="5" type="button">+5</button>
-                      <button class="bill" data-bill="10" type="button">+10</button>
-                      <button class="bill" data-bill="20" type="button">+20</button>
-                      <button class="bill" data-bill="50" type="button">+50</button>
-                      <button class="bill bill-soft" id="btnExact" type="button" title="Entregado = Total">Exacto</button>
-                      <button class="bill bill-soft" id="btnCashKeypad" type="button" title="Teclado numérico">Teclado</button>
-                      <button class="bill bill-clear" id="btnCashClear" type="button" title="Limpiar entregado">C</button>
-                    </div>
-
-                    <div class="pay-row">
-                      <button class="btn btn-primary" id="btnCashPay" type="button">COBRAR EFECTIVO</button>
-                    </div>
+                  <div class="pay-fields">
+                    <label class="field">
+                      <span>Entregado</span>
+                      <input id="givenInput" inputmode="decimal" placeholder="0,00" />
+                    </label>
+                    <label class="field">
+                      <span>Cambio</span>
+                      <input id="changeInput" inputmode="decimal" placeholder="0,00" disabled />
+                    </label>
+                    <label class="field">
+                      <span>Nombre / nota (opcional)</span>
+                      <input id="noteName" placeholder="Ej: Cliente / Nota…" />
+                    </label>
                   </div>
                 </div>
 
-                <div class="mini-note muted">
-                  Tarjeta 1-toque · Efectivo rápido · Mixto en Detalles · Impresión ON/OFF
+                <div class="cta-row">
+                  <button class="btn btn-danger" id="btnVoid" type="button">Anular</button>
+                  <button class="btn btn-soft" id="btnRefund" type="button" title="Requiere PIN admin">Devolución</button>
+                  <button class="btn btn-primary" id="btnPay" type="button">Cobrar</button>
                 </div>
+
+                <div class="mini-note muted">Ticket 80mm · Impresión ON/OFF · Email (mailto)</div>
               </div>
             </div>
+
           </section>
         </div>
       </section>
@@ -262,14 +256,14 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
           </div>
 
           <div class="card">
-            <div class="field-row field-row-3">
+            <div class="field-row">
               <label class="field">
                 <span>Buscar por nombre</span>
                 <input id="prodSearchName" placeholder="Ej: manzana…" />
               </label>
               <label class="field">
                 <span>Buscar por barcode</span>
-                <input id="prodSearchBarcode" inputmode="numeric" placeholder="Escanear / escribir…" />
+                <input id="prodSearchBarcode" inputmode="numeric" placeholder="Escanear / escribir barcode…" />
               </label>
               <label class="field">
                 <span>Categoría</span>
@@ -293,70 +287,33 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       </section>
 
       <!-- =========================
-           TAB: REPORTES (Bandeja + Reportes)
+           TAB: REPORTES (Diario/Semanal/Mensual/Rango)
       ========================== -->
       <section class="page" data-page="reportes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Reportes</h2>
-              <p>Bandeja del día (operativa) · Diario/Semanal/Mensual/Rango · Cierre Z</p>
+              <p>Diario · Semanal · Mensual · Personalizado (ventas cerradas + abiertas si corresponde).</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnExportSalesCsv" type="button">Exportar ventas CSV</button>
-              <button class="btn btn-soft" id="btnCloseZ" type="button">Cierre Z (limpia bandeja)</button>
+              <button class="btn btn-soft" id="btnCloseZ" type="button">Cierre Z</button>
             </div>
           </div>
 
-          <div class="grid-2">
-            <div class="card">
-              <h3>Bandeja del día</h3>
-              <div class="muted small">Se limpia al cerrar Z, pero el histórico queda en reportes.</div>
-              <div class="table mini-table" id="trayTable">
-                <div class="trow thead">
-                  <div class="tcell">Hora</div>
-                  <div class="tcell">Ticket</div>
-                  <div class="tcell">Pago</div>
-                  <div class="tcell tcell-right">Total</div>
-                  <div class="tcell tcell-right">Acción</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card">
-              <h3>Resumen rápido</h3>
-              <div class="stat-grid">
-                <div class="stat">
-                  <div class="stat-label">Tickets</div>
-                  <div class="stat-value mono" id="statTickets">0</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-label">Total</div>
-                  <div class="stat-value mono" id="statTotal">0,00 €</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-label">Efectivo</div>
-                  <div class="stat-value mono" id="statCash">0,00 €</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-label">Tarjeta</div>
-                  <div class="stat-value mono" id="statCard">0,00 €</div>
-                </div>
-              </div>
-              <div class="muted small" style="margin-top:10px" id="zLastInfo">Último Z: —</div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Filtro de reportes</h3>
-            <div class="range-bar">
-              <button class="range-btn is-active" data-range="day" type="button">Día</button>
-              <button class="range-btn" data-range="week" type="button">Semana</button>
-              <button class="range-btn" data-range="month" type="button">Mes</button>
-              <button class="range-btn" data-range="custom" type="button">Rango</button>
-            </div>
-
-            <div class="field-row field-row-3" style="margin-top:12px">
+          <div class="card report-filter">
+            <div class="field-row report-row">
+              <label class="field">
+                <span>Rango</span>
+                <select id="repPreset">
+                  <option value="today">Hoy (abierto)</option>
+                  <option value="yesterday">Ayer</option>
+                  <option value="week">Esta semana</option>
+                  <option value="month">Este mes</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              </label>
               <label class="field">
                 <span>Desde</span>
                 <input id="repFrom" type="date" />
@@ -365,34 +322,58 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
                 <span>Hasta</span>
                 <input id="repTo" type="date" />
               </label>
-              <div class="field">
-                <span>&nbsp;</span>
-                <button class="btn btn-primary" id="btnApplyRange" type="button">Aplicar</button>
+            </div>
+
+            <div class="report-kpis">
+              <div class="kpi">
+                <div class="kpi-label">Tickets</div>
+                <div class="kpi-value mono" id="statTickets">0</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">Total</div>
+                <div class="kpi-value mono" id="statTotal">0,00 €</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">Efectivo</div>
+                <div class="kpi-value mono" id="statCash">0,00 €</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">Tarjeta</div>
+                <div class="kpi-value mono" id="statCard">0,00 €</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">Beneficio</div>
+                <div class="kpi-value mono" id="statProfit">0,00 €</div>
               </div>
             </div>
 
-            <div class="table" id="reportTable" style="margin-top:12px">
-              <div class="trow thead">
-                <div class="tcell">Fecha</div>
-                <div class="tcell">Tickets</div>
-                <div class="tcell">Efectivo</div>
-                <div class="tcell">Tarjeta</div>
-                <div class="tcell tcell-right">Total</div>
-              </div>
+            <div class="hint">
+              <div class="hint-title">Cierre Z</div>
+              <div class="hint-body" id="zInfo">—</div>
+            </div>
+          </div>
+
+          <div class="table card" id="salesTable">
+            <div class="trow thead">
+              <div class="tcell">Fecha</div>
+              <div class="tcell">Ticket</div>
+              <div class="tcell">Pago</div>
+              <div class="tcell tcell-right">Total</div>
+              <div class="tcell tcell-right">Acciones</div>
             </div>
           </div>
         </div>
       </section>
 
       <!-- =========================
-           TAB: AJUSTES
+           TAB: AJUSTES (Admin)
       ========================== -->
       <section class="page" data-page="ajustes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Negocio, escáner, seguridad, sonido, impresión.</p>
+              <p>Negocio, caja, seguridad, impresión, escáner.</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -425,10 +406,48 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
             </div>
 
             <div class="card">
-              <h3>Escáner + flujo</h3>
+              <h3>Modo rápido</h3>
               <div class="field-row">
                 <label class="field">
-                  <span>Siempre escuchar escáner</span>
+                  <span>Cobro directo (sin modal)</span>
+                  <select id="setDirectPay">
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Impresión (ON/OFF)</span>
+                  <select id="setPrintOn">
+                    <option value="1">ON</option>
+                    <option value="0">OFF</option>
+                  </select>
+                </label>
+              </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Auto-imprimir al cobrar</span>
+                  <select id="setAutoPrint">
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Imprimir cierre Z al cerrar</span>
+                  <select id="setPrintZ">
+                    <option value="1">Sí</option>
+                    <option value="0">No</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>Escáner</h3>
+              <div class="field-row">
+                <label class="field">
+                  <span>Siempre escuchar escaneo</span>
                   <select id="setAlwaysScan">
                     <option value="1">Sí</option>
                     <option value="0">No</option>
@@ -437,43 +456,44 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
                 <label class="field">
                   <span>Velocidad escáner (ms)</span>
                   <input id="setScanSpeed" inputmode="numeric" placeholder="35" />
-                  <small>Recomendado 30–45.</small>
+                  <small>Recomendado 30–45. Menor = más estricto (lector).</small>
                 </label>
               </div>
+            </div>
 
+            <div class="card">
+              <h3>Seguridad</h3>
               <div class="field-row">
                 <label class="field">
-                  <span>BIP (solo cierre + manual)</span>
-                  <select id="setBeep">
-                    <option value="1">Sí</option>
-                    <option value="0">No</option>
-                  </select>
+                  <span>PIN Admin (cambiar)</span>
+                  <input id="setAdminPin" type="password" inputmode="numeric" placeholder="••••" />
+                  <small>Por defecto: 1234</small>
                 </label>
                 <label class="field">
-                  <span>Auto impresión</span>
-                  <select id="setAutoPrint">
-                    <option value="1">Sí</option>
-                    <option value="0">No</option>
-                  </select>
+                  <span>Auto-bloqueo Admin (min)</span>
+                  <input id="setAutoLockMin" inputmode="numeric" placeholder="10" />
+                  <small>Bloquea Admin tras X min sin actividad.</small>
                 </label>
               </div>
             </div>
           </div>
 
+          <!-- ABOUT PLEGABLE -->
           <div class="card">
-            <h3>Seguridad</h3>
-            <div class="field-row">
-              <label class="field">
-                <span>PIN Admin (cambiar)</span>
-                <input id="setAdminPin" type="password" inputmode="numeric" placeholder="••••" />
-                <small>Por defecto: 1234</small>
-              </label>
-              <label class="field">
-                <span>Auto-bloqueo Admin (min)</span>
-                <input id="setAutoLockMin" inputmode="numeric" placeholder="10" />
-              </label>
-            </div>
+            <details class="about" id="aboutBox">
+              <summary class="about-sum">About</summary>
+              <div class="about-body">
+                <div class="about-title">TPV NADEEM LOCUTORIO</div>
+                <div class="about-row"><span class="muted">Versión:</span> <span class="mono" id="aboutVer">v1.3</span></div>
+                <div class="about-row"><span class="muted">Modo:</span> <span class="mono">Local (GitHub Pages) · IVA incluido</span></div>
+                <div class="about-row"><span class="muted">Crédito:</span> <span class="mono">Made by Arslan Waris · All rights reserved</span></div>
+                <div class="about-actions">
+                  <button class="btn btn-soft" id="btnCopyAbout" type="button">Copiar info</button>
+                </div>
+              </div>
+            </details>
           </div>
+
         </div>
       </section>
 
@@ -484,32 +504,28 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
         <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right muted"><span class="mono" id="appVersion">v1.3</span></div>
+      <div class="footer-right">
+        <span class="credit mono">Made by Arslan Waris · All rights reserved</span>
+      </div>
     </footer>
   </div>
 
-  <!-- PRINT AREA 80mm -->
+  <!-- PRINT AREA 80MM -->
   <div id="printArea" class="print-area" aria-hidden="true"></div>
 
-  <!-- Cambio flash 3s -->
-  <div id="changeFlash" class="change-flash" hidden>
-    <div class="change-flash-inner">
-      <div class="change-title">CAMBIO</div>
-      <div class="change-value mono" id="changeFlashValue">0,00 €</div>
-    </div>
-  </div>
-
-  <!-- Toast -->
+  <!-- TOAST -->
   <div id="toastHost" class="toast-host" aria-hidden="true"></div>
 
-  <!-- Backdrop -->
+  <!-- BACKDROP -->
   <div class="modal-backdrop" id="backdrop" hidden></div>
 
   <!-- Hidden file inputs -->
   <input id="fileCsv" type="file" accept=".csv,text/csv" hidden />
   <input id="fileJson" type="file" accept=".json,application/json" hidden />
 
-  <!-- ===== MODALS ===== -->
+  <!-- =========================
+       MODALS
+  ========================== -->
 
   <!-- LOGIN -->
   <dialog class="modal" id="modalLogin" aria-label="Login">
@@ -559,62 +575,123 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
     </div>
   </dialog>
 
-  <!-- DETALLES (Mixto / Nota / etc.) -->
-  <dialog class="modal" id="modalDetails" aria-label="Detalles de cobro">
+  <!-- COBRO PRO -->
+  <dialog class="modal" id="modalPay" aria-label="Cobro">
     <div class="modal-head">
       <div>
-        <div class="modal-title">Detalles</div>
-        <div class="muted small">Mixto / nota / opciones</div>
+        <div class="modal-title">Cobrar</div>
+        <div class="muted small">Billetes · teclado · cambio</div>
       </div>
-      <button class="icon-btn" data-close="modalDetails" aria-label="Cerrar">✕</button>
+      <button class="icon-btn" data-close="modalPay" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
-      <div class="field-row">
-        <label class="field">
-          <span>Método</span>
-          <select id="detMethod">
-            <option value="mixto">Mixto</option>
-            <option value="efectivo">Efectivo</option>
-            <option value="tarjeta">Tarjeta</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Nota</span>
-          <input id="detNote" placeholder="Opcional…" />
-        </label>
-      </div>
+      <div class="pay-confirm">
+        <div class="pay-big">
+          <div>
+            <div class="muted">Total</div>
+            <div class="pay-total mono" id="payTotal">0,00 €</div>
+          </div>
+          <div class="change-big">
+            <div class="muted">Cambio</div>
+            <div class="change-value mono" id="payChangeBig">0,00 €</div>
+          </div>
+        </div>
 
-      <div class="field-row" id="detMixWrap">
-        <label class="field">
-          <span>Efectivo</span>
-          <input id="detCash" inputmode="decimal" placeholder="0,00" />
-        </label>
-        <label class="field">
-          <span>Tarjeta</span>
-          <input id="detCard" inputmode="decimal" placeholder="0,00" />
-        </label>
-      </div>
+        <div class="field-row pay-row">
+          <label class="field">
+            <span>Método</span>
+            <select id="payMethod">
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="mixto">Mixto</option>
+            </select>
+          </label>
 
-      <div class="hint">
-        <div class="hint-title">Tip</div>
-        <div class="hint-body">La tarjeta “1 toque” siempre es sin modal.</div>
+          <label class="field" id="payGivenWrap">
+            <span>Entregado</span>
+            <input id="payGiven" inputmode="decimal" placeholder="0,00" />
+          </label>
+
+          <label class="field" id="payCardOnlyWrap">
+            <span>Tarjeta</span>
+            <input id="payCardOnly" inputmode="decimal" placeholder="0,00" />
+            <small>Opcional (para registro).</small>
+          </label>
+        </div>
+
+        <div class="field-row" id="paySplitWrap" hidden>
+          <label class="field">
+            <span>Efectivo (mixto)</span>
+            <input id="payCash" inputmode="decimal" placeholder="0,00" />
+          </label>
+          <label class="field">
+            <span>Tarjeta (mixto)</span>
+            <input id="payCard" inputmode="decimal" placeholder="0,00" />
+          </label>
+        </div>
+
+        <!-- Botones billetes/monedas -->
+        <div class="moneybar" id="moneyBar" aria-label="Billetes y monedas">
+          <button class="mbtn" data-add="5">5€</button>
+          <button class="mbtn" data-add="10">10€</button>
+          <button class="mbtn" data-add="20">20€</button>
+          <button class="mbtn" data-add="50">50€</button>
+          <button class="mbtn" data-add="1">1€</button>
+          <button class="mbtn" data-add="2">2€</button>
+          <button class="mbtn" data-add="0.5">0,50€</button>
+          <button class="mbtn" data-add="0.2">0,20€</button>
+          <button class="mbtn" data-add="0.1">0,10€</button>
+          <button class="mbtn mbtn-fn" data-add="exact">Exacto</button>
+          <button class="mbtn mbtn-fn" data-add="clear">C</button>
+        </div>
+
+        <!-- Teclado numérico para Entregado -->
+        <div class="keypad paypad" id="payKeypad">
+          <button class="key" data-k="7">7</button>
+          <button class="key" data-k="8">8</button>
+          <button class="key" data-k="9">9</button>
+          <button class="key key-fn" data-k="bk">⌫</button>
+
+          <button class="key" data-k="4">4</button>
+          <button class="key" data-k="5">5</button>
+          <button class="key" data-k="6">6</button>
+          <button class="key key-fn" data-k="c">C</button>
+
+          <button class="key" data-k="1">1</button>
+          <button class="key" data-k="2">2</button>
+          <button class="key" data-k="3">3</button>
+          <button class="key key-fn" data-k=".">,</button>
+
+          <button class="key key-wide" data-k="0">0</button>
+          <button class="key" data-k="00">00</button>
+          <button class="key key-ok" data-k="ok">COBRAR</button>
+        </div>
+
+        <label class="field">
+          <span>Nombre / nota (opcional)</span>
+          <input id="payNote" placeholder="Ej: cliente…" />
+        </label>
       </div>
     </div>
+
     <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modalDetails" type="button">Cancelar</button>
-      <button class="btn btn-primary" id="btnDetailsPay" type="button">Confirmar</button>
+      <button class="btn btn-ghost" data-close="modalPay" type="button">Cancelar</button>
+      <button class="btn btn-soft" id="btnPayNoPrint" type="button">Cobrar sin imprimir</button>
+      <button class="btn btn-primary" id="btnPayOk" type="button">Cobrar</button>
     </div>
   </dialog>
 
-  <!-- IMPORTE RÁPIDO -->
+  <!-- IMPORTE RÁPIDO (teclado) -->
   <dialog class="modal" id="modalQuick" aria-label="Importe rápido">
     <div class="modal-head">
       <div>
         <div class="modal-title">Importe rápido</div>
-        <div class="muted small">Añade línea manual</div>
+        <div class="muted small">Añade una línea manual</div>
       </div>
       <button class="icon-btn" data-close="modalQuick" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <div class="field-row">
         <label class="field">
@@ -623,11 +700,11 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
         </label>
         <label class="field">
           <span>Nombre (opcional)</span>
-          <input id="quickName" placeholder="Ej: Bolsa…" />
+          <input id="quickName" placeholder="Ej: Bolsa, Servicio…" />
         </label>
       </div>
 
-      <div class="keypad" id="keypadQuick">
+      <div class="keypad" id="keypad">
         <button class="key" data-k="7">7</button>
         <button class="key" data-k="8">8</button>
         <button class="key" data-k="9">9</button>
@@ -647,52 +724,16 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
         <button class="key" data-k="00">00</button>
         <button class="key key-ok" data-k="ok">OK</button>
       </div>
+
+      <div class="hint">
+        <div class="hint-title">Atajo</div>
+        <div class="hint-body"><span class="kbd">F2</span></div>
+      </div>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalQuick" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnQuickOk" type="button">Añadir</button>
-    </div>
-  </dialog>
-
-  <!-- TECLADO EFECTIVO (para Entregado en panel fijo) -->
-  <dialog class="modal" id="modalCashKeypad" aria-label="Teclado efectivo">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Entregado (Efectivo)</div>
-        <div class="muted small">Teclado numérico</div>
-      </div>
-      <button class="icon-btn" data-close="modalCashKeypad" aria-label="Cerrar">✕</button>
-    </div>
-    <div class="modal-body">
-      <label class="field">
-        <span>Entregado</span>
-        <input id="cashKeypadValue" inputmode="decimal" placeholder="0,00" />
-      </label>
-
-      <div class="keypad" id="keypadCash">
-        <button class="key" data-k="7">7</button>
-        <button class="key" data-k="8">8</button>
-        <button class="key" data-k="9">9</button>
-        <button class="key key-fn" data-k="bk">⌫</button>
-
-        <button class="key" data-k="4">4</button>
-        <button class="key" data-k="5">5</button>
-        <button class="key" data-k="6">6</button>
-        <button class="key key-fn" data-k="c">C</button>
-
-        <button class="key" data-k="1">1</button>
-        <button class="key" data-k="2">2</button>
-        <button class="key" data-k="3">3</button>
-        <button class="key key-fn" data-k=".">,</button>
-
-        <button class="key key-wide" data-k="0">0</button>
-        <button class="key" data-k="00">00</button>
-        <button class="key key-ok" data-k="ok">OK</button>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modalCashKeypad" type="button">Cancelar</button>
-      <button class="btn btn-primary" id="btnCashKeypadOk" type="button">Aplicar</button>
     </div>
   </dialog>
 
@@ -705,6 +746,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       </div>
       <button class="icon-btn" data-close="modalProduct" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <div class="field-row">
         <label class="field">
@@ -713,17 +755,17 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
         </label>
         <label class="field">
           <span>Nombre</span>
-          <input id="prodName" placeholder="Ej: Plátano…" />
+          <input id="prodName" placeholder="Ej: Producto…" />
         </label>
       </div>
 
-      <div class="field-row field-row-3">
+      <div class="field-row">
         <label class="field">
-          <span>PVP</span>
+          <span>PVP (IVA incl.)</span>
           <input id="prodPrice" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
-          <span>Compra (opc.)</span>
+          <span>Compra (opcional)</span>
           <input id="prodCost" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
@@ -749,13 +791,14 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
         </label>
       </div>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalProduct" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnProductSave" type="button">Guardar</button>
     </div>
   </dialog>
 
-  <!-- CATEGORÍAS -->
+  <!-- CATEGORÍAS (gestión) -->
   <dialog class="modal" id="modalCats" aria-label="Categorías">
     <div class="modal-head">
       <div>
@@ -764,6 +807,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       </div>
       <button class="icon-btn" data-close="modalCats" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <div class="field-row">
         <label class="field">
@@ -775,8 +819,14 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
           <button class="btn btn-primary" id="btnCreateCat" type="button">Crear</button>
         </div>
       </div>
+
       <div class="cat-list" id="catList"></div>
+      <div class="hint">
+        <div class="hint-title">Nota</div>
+        <div class="hint-body">Renombrar cambia la categoría en todos los productos.</div>
+      </div>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalCats" type="button">Cerrar</button>
     </div>
@@ -791,11 +841,12 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       </div>
       <button class="icon-btn" data-close="modalPark" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <div class="field-row">
         <label class="field">
           <span>Nombre (opcional)</span>
-          <input id="parkName" placeholder="Ej: Cliente / Mesa…" />
+          <input id="parkName" placeholder="Ej: Cliente / Mesa / Nota…" />
         </label>
         <div class="field">
           <span>&nbsp;</span>
@@ -804,6 +855,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       </div>
       <div class="park-list" id="parkList"></div>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalPark" type="button">Cerrar</button>
     </div>
@@ -814,13 +866,14 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
     <div class="modal-head">
       <div>
         <div class="modal-title">Cierre Z</div>
-        <div class="muted small">Imprime Z + descuadre y limpia bandeja del día</div>
+        <div class="muted small">Descuadre +/- · Archivar día · Limpiar ventas abiertas</div>
       </div>
       <button class="icon-btn" data-close="modalZ" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <div class="hint">
-        <div class="hint-title">Resumen esperado</div>
+        <div class="hint-title">Esperado</div>
         <div class="hint-body" id="zExpected">—</div>
       </div>
 
@@ -830,19 +883,30 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
           <input id="zCashCounted" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
-          <span>Nota (opcional)</span>
-          <input id="zNote" placeholder="Ej: descuadre por…"/>
+          <span>Descuadre</span>
+          <input id="zDiff" disabled placeholder="0,00" />
+          <small>Contado - Esperado (puede ser + o -)</small>
         </label>
       </div>
 
-      <div class="hint">
-        <div class="hint-title">Descuadre</div>
-        <div class="hint-body mono" id="zDiff">—</div>
+      <div class="field-row">
+        <label class="field">
+          <span>Nota (opcional)</span>
+          <input id="zNote" placeholder="Ej: descuadre por…" />
+        </label>
+        <label class="field">
+          <span>Acción</span>
+          <select id="zAction">
+            <option value="close">Cerrar día (archivar + limpiar)</option>
+            <option value="print">Solo imprimir Z</option>
+          </select>
+        </label>
       </div>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalZ" type="button">Cancelar</button>
-      <button class="btn btn-primary" id="btnZOk" type="button">Cerrar día (Z)</button>
+      <button class="btn btn-primary" id="btnZOk" type="button">Confirmar</button>
     </div>
   </dialog>
 
@@ -855,6 +919,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
       </div>
       <button class="icon-btn" data-close="modalEmail" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
       <label class="field">
         <span>Email</span>
@@ -865,6 +930,7 @@ Coloca index.html + styles.css + app.js en la MISMA carpeta (root o /docs).
         <textarea id="emailMsg" rows="4" placeholder="Mensaje extra…"></textarea>
       </label>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalEmail" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnEmailSend" type="button">Abrir email</button>
