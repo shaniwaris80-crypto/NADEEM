@@ -1,10 +1,12 @@
 <!-- =========================
-PARTE A — TPV TIENDA (OPCIÓN 1 / GITHUB)
-Archivo: index.html
-- UI + Layout PRO (pantalla dividida)
-- Tabs arriba (Ventas por defecto)
-- Modales (Login / Admin PIN / Cobro / Añadir producto / Enviar ticket)
-- Sin lógica completa todavía (eso va en Parte B/C)
+TPV TIENDA — B/W PRO (OPCIÓN 1 / GITHUB)
+Archivo: index.html  (REGENERADO MEJORADO)
+- UI PRO + POS split
+- Tabs arriba
+- Ajustes conectables (ids)
+- PrintArea dedicado 80mm
+- Modales: Login, Admin PIN, Cobro, Importe rápido, Producto, Email
+- Sin script inline (todo en app.js)
 ========================= -->
 <!doctype html>
 <html lang="es">
@@ -13,12 +15,10 @@ Archivo: index.html
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
   <title>TPV TIENDA — B/W PRO</title>
-
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body class="theme-day">
-  <!-- ===== APP SHELL ===== -->
   <div class="app" id="app">
 
     <!-- ===== TOP BAR ===== -->
@@ -32,21 +32,12 @@ Archivo: index.html
       </div>
 
       <nav class="tabs" role="tablist" aria-label="Secciones">
-        <button class="tab is-active" role="tab" aria-selected="true" data-tab="venta">
-          Venta
-        </button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="productos">
-          Productos
-        </button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="ventas">
-          Ventas / Reportes
-        </button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="beneficios">
-          Beneficios
-        </button>
+        <button class="tab is-active" role="tab" aria-selected="true" data-tab="venta">Venta</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="productos">Productos</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="ventas">Ventas / Reportes</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="beneficios">Beneficios</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="ajustes">
-          Ajustes
-          <span class="pill">Admin</span>
+          Ajustes <span class="pill">Admin</span>
         </button>
       </nav>
 
@@ -58,12 +49,12 @@ Archivo: index.html
 
         <button class="btn btn-ghost" id="btnLogin" type="button" title="Cambiar usuario">
           <span class="icon" aria-hidden="true">👤</span>
-          <span id="userLabel">Cajero</span>
+          <span id="userLabel">CAJERO</span>
         </button>
 
         <button class="btn btn-admin" id="btnAdmin" type="button" title="Acceso Admin (PIN)">
           <span class="icon" aria-hidden="true">🔒</span>
-          Admin
+          <span id="adminState">Admin</span>
         </button>
       </div>
     </header>
@@ -77,7 +68,7 @@ Archivo: index.html
       <section class="page is-active" data-page="venta">
         <div class="pos-grid">
 
-          <!-- ===== LEFT: PRODUCTOS / BUSCADORES ===== -->
+          <!-- ===== LEFT ===== -->
           <section class="panel panel-left">
             <div class="panel-head">
               <div class="panel-title">
@@ -86,11 +77,10 @@ Archivo: index.html
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-soft" id="btnQuickAmount" type="button">
-                  + Importe rápido
-                </button>
-                <button class="btn btn-soft" id="btnPark" type="button" title="Aparcar carrito">
-                  Aparcar
+                <button class="btn btn-soft" id="btnQuickAmount" type="button">+ Importe rápido</button>
+
+                <button class="btn btn-soft" id="btnPark" type="button" title="Aparcar / Recuperar carrito">
+                  Aparcar <span class="badge badge-mini" id="parkBadge" hidden>1</span>
                 </button>
               </div>
             </div>
@@ -100,13 +90,13 @@ Archivo: index.html
                 <label class="field">
                   <span>Escanear / Barcode</span>
                   <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (siempre enfocado)" />
-                  <small>Tip: el lector suele escribir como teclado + Enter.</small>
+                  <small>El lector suele escribir + Enter. Click fuera: vuelve el foco aquí.</small>
                 </label>
 
                 <label class="field">
                   <span>Buscar producto</span>
                   <input id="searchInput" autocomplete="off" placeholder="Nombre del producto…" />
-                  <small>Escribe para filtrar favoritos/catálogo.</small>
+                  <small>Filtra favoritos/catálogo por nombre o barcode.</small>
                 </label>
               </div>
 
@@ -120,7 +110,7 @@ Archivo: index.html
             </div>
 
             <div class="section-title">
-              <span>Productos más usados</span>
+              <span>Productos</span>
               <div class="section-actions">
                 <button class="btn btn-ghost" id="btnAddProductInline" type="button" title="Alta rápida (barcode primero)">
                   + Producto
@@ -128,71 +118,32 @@ Archivo: index.html
               </div>
             </div>
 
-            <!-- GRID FAVORITOS (DEMO UI) -->
-            <div class="fav-grid" aria-label="Favoritos">
-              <button class="fav" type="button">
-                <div class="fav-name">Plátano</div>
-                <div class="fav-price">1,89 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Manzana</div>
-                <div class="fav-price">2,40 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Naranja</div>
-                <div class="fav-price">1,60 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Tomate</div>
-                <div class="fav-price">2,10 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Lechuga</div>
-                <div class="fav-price">1,20 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Aguacate</div>
-                <div class="fav-price">3,90 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Bolsa</div>
-                <div class="fav-price">0,10 €</div>
-              </button>
-              <button class="fav" type="button">
-                <div class="fav-name">Importe</div>
-                <div class="fav-price">Manual</div>
-              </button>
-            </div>
+            <div class="fav-grid" id="favGrid" aria-label="Productos rápidos"></div>
 
             <div class="hint">
-              <div class="hint-title">Atajos (UI)</div>
+              <div class="hint-title">Atajos</div>
               <div class="hint-body">
                 <span class="kbd">F4</span> Cobrar ·
-                <span class="kbd">Supr</span> Borrar línea ·
-                <span class="kbd">Esc</span> Limpiar ·
-                <span class="kbd">+</span>/<span class="kbd">-</span> Cantidad
+                <span class="kbd">F2</span> Importe rápido ·
+                <span class="kbd">Supr</span> Borrar última ·
+                <span class="kbd">Esc</span> Limpiar/Salir ·
+                <span class="kbd">+</span>/<span class="kbd">-</span> Qty última
               </div>
             </div>
           </section>
 
-          <!-- ===== RIGHT: TICKET / TOTALES ===== -->
+          <!-- ===== RIGHT ===== -->
           <section class="panel panel-right">
             <div class="panel-head">
               <div class="panel-title">
                 <h2>Ticket</h2>
-                <p><span class="mono" id="ticketNo">T-000001</span> · <span id="ticketDate">Hoy</span></p>
+                <p><span class="mono" id="ticketNo">T-000001</span> · <span id="ticketDate">—</span></p>
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último ticket">
-                  Último
-                </button>
-                <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar ticket por email">
-                  Email
-                </button>
-                <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir ticket (80mm)">
-                  Imprimir
-                </button>
+                <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Reimprimir último ticket">Último</button>
+                <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar ticket por email">Email</button>
+                <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir ticket (80mm)">Imprimir</button>
               </div>
             </div>
 
@@ -208,61 +159,32 @@ Archivo: index.html
                 </div>
               </div>
 
-              <div class="ticket-lines" role="table" aria-label="Líneas del ticket">
+              <div class="ticket-lines" id="ticketLines" role="table" aria-label="Líneas del ticket">
                 <div class="trow thead" role="row">
                   <div class="tcell">Producto</div>
                   <div class="tcell tcell-center">Qty</div>
                   <div class="tcell tcell-right">PVP</div>
                   <div class="tcell tcell-right">Total</div>
                 </div>
-
-                <!-- DEMO LÍNEAS (UI) -->
-                <div class="trow" role="row">
-                  <div class="tcell">
-                    <div class="line-name">Plátano</div>
-                    <div class="line-sub mono">BC: 1234567890123</div>
-                  </div>
-                  <div class="tcell tcell-center">
-                    <div class="qty">
-                      <button class="qty-btn" type="button" aria-label="menos">−</button>
-                      <input class="qty-in" value="2" inputmode="numeric" />
-                      <button class="qty-btn" type="button" aria-label="más">+</button>
-                    </div>
-                  </div>
-                  <div class="tcell tcell-right mono">1,89</div>
-                  <div class="tcell tcell-right mono">3,78</div>
-                </div>
-
-                <div class="trow" role="row">
-                  <div class="tcell">
-                    <div class="line-name">Bolsa</div>
-                    <div class="line-sub mono">Manual</div>
-                  </div>
-                  <div class="tcell tcell-center">
-                    <div class="qty">
-                      <button class="qty-btn" type="button" aria-label="menos">−</button>
-                      <input class="qty-in" value="1" inputmode="numeric" />
-                      <button class="qty-btn" type="button" aria-label="más">+</button>
-                    </div>
-                  </div>
-                  <div class="tcell tcell-right mono">0,10</div>
-                  <div class="tcell tcell-right mono">0,10</div>
-                </div>
               </div>
 
               <div class="ticket-totals">
                 <div class="totals-grid">
                   <div class="total-row">
+                    <span class="muted">Líneas</span>
+                    <span class="mono" id="linesCount">0</span>
+                  </div>
+                  <div class="total-row">
                     <span class="muted">Subtotal</span>
-                    <span class="mono" id="subTotal">3,88 €</span>
+                    <span class="mono" id="subTotal">0,00 €</span>
                   </div>
                   <div class="total-row">
                     <span class="muted">IVA</span>
-                    <span class="mono" id="vatNote">Incluido</span>
+                    <span class="mono">Incluido</span>
                   </div>
                   <div class="total-row total-strong">
                     <span>Total</span>
-                    <span class="mono" id="grandTotal">3,88 €</span>
+                    <span class="mono" id="grandTotal">0,00 €</span>
                   </div>
                 </div>
 
@@ -283,27 +205,19 @@ Archivo: index.html
                       <input id="changeInput" inputmode="decimal" placeholder="0,00" disabled />
                     </label>
                     <label class="field">
-                      <span>Nombre (opcional)</span>
+                      <span>Nombre / nota (opcional)</span>
                       <input id="noteName" placeholder="Ej: Mesa 2 / Cliente / Nota…" />
                     </label>
                   </div>
                 </div>
 
                 <div class="cta-row">
-                  <button class="btn btn-danger" id="btnVoid" type="button">
-                    Anular
-                  </button>
-                  <button class="btn btn-soft" id="btnRefund" type="button" title="Requiere PIN admin">
-                    Devolución
-                  </button>
-                  <button class="btn btn-primary" id="btnPay" type="button">
-                    Cobrar
-                  </button>
+                  <button class="btn btn-danger" id="btnVoid" type="button">Anular</button>
+                  <button class="btn btn-soft" id="btnRefund" type="button" title="Requiere PIN admin">Devolución</button>
+                  <button class="btn btn-primary" id="btnPay" type="button">Cobrar</button>
                 </div>
 
-                <div class="mini-note muted">
-                  Formato ticket 80mm · IVA incluido en precios · Modo día/noche
-                </div>
+                <div class="mini-note muted">Ticket 80mm · IVA incluido · Envío email (mailto)</div>
               </div>
             </div>
 
@@ -319,7 +233,7 @@ Archivo: index.html
           <div class="page-head">
             <div>
               <h2>Productos</h2>
-              <p>Alta (barcode primero), edición, favoritos, import/export.</p>
+              <p>Alta (barcode primero), edición, favoritos, import/export (Parte C).</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnImportCsv" type="button">Importar CSV</button>
@@ -332,15 +246,15 @@ Archivo: index.html
             <div class="field-row">
               <label class="field">
                 <span>Buscar por nombre</span>
-                <input placeholder="Ej: manzana…" />
+                <input id="prodSearchName" placeholder="Ej: manzana…" />
               </label>
               <label class="field">
                 <span>Buscar por barcode</span>
-                <input inputmode="numeric" placeholder="Escanear / escribir barcode…" />
+                <input id="prodSearchBarcode" inputmode="numeric" placeholder="Escanear / escribir barcode…" />
               </label>
               <label class="field">
                 <span>Categoría</span>
-                <select>
+                <select id="prodSearchCat">
                   <option value="">Todas</option>
                   <option>Fruta</option>
                   <option>Verdura</option>
@@ -351,7 +265,7 @@ Archivo: index.html
             </div>
           </div>
 
-          <div class="table card">
+          <div class="table card" id="productsTable">
             <div class="trow thead">
               <div class="tcell">Producto</div>
               <div class="tcell">Barcode</div>
@@ -360,43 +274,11 @@ Archivo: index.html
               <div class="tcell tcell-center">Fav</div>
               <div class="tcell tcell-right">Acciones</div>
             </div>
-
-            <div class="trow">
-              <div class="tcell">
-                <div class="line-name">Plátano</div>
-                <div class="line-sub muted">Fruta</div>
-              </div>
-              <div class="tcell mono">1234567890123</div>
-              <div class="tcell tcell-right mono">1,89</div>
-              <div class="tcell tcell-right mono">1,20</div>
-              <div class="tcell tcell-center"><span class="badge badge-ok">Sí</span></div>
-              <div class="tcell tcell-right">
-                <button class="btn btn-ghost btn-small" type="button">Editar</button>
-                <button class="btn btn-ghost btn-small" type="button">Borrar</button>
-              </div>
-            </div>
-
-            <div class="trow">
-              <div class="tcell">
-                <div class="line-name">Bolsa</div>
-                <div class="line-sub muted">Otros</div>
-              </div>
-              <div class="tcell mono">—</div>
-              <div class="tcell tcell-right mono">0,10</div>
-              <div class="tcell tcell-right mono">—</div>
-              <div class="tcell tcell-center"><span class="badge">No</span></div>
-              <div class="tcell tcell-right">
-                <button class="btn btn-ghost btn-small" type="button">Editar</button>
-                <button class="btn btn-ghost btn-small" type="button">Borrar</button>
-              </div>
-            </div>
           </div>
 
           <div class="hint">
-            <div class="hint-title">Tip pro</div>
-            <div class="hint-body">
-              Importa tu catálogo por CSV y marca favoritos para que aparezcan en “Venta rápida”.
-            </div>
+            <div class="hint-title">Tip</div>
+            <div class="hint-body">Parte C mete import/export real CSV/JSON + edición completa masiva.</div>
           </div>
         </div>
       </section>
@@ -409,7 +291,7 @@ Archivo: index.html
           <div class="page-head">
             <div>
               <h2>Ventas / Reportes</h2>
-              <p>Totales por día, métodos de pago, cierres de caja.</p>
+              <p>Resumen local (Parte C añade gráficos reales y cierres Z completos).</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnCloseZ" type="button">Cierre Z</button>
@@ -419,23 +301,23 @@ Archivo: index.html
 
           <div class="grid-2">
             <div class="card">
-              <h3>Resumen de hoy</h3>
+              <h3>Resumen</h3>
               <div class="stat-grid">
                 <div class="stat">
-                  <div class="stat-label">Ventas</div>
-                  <div class="stat-value mono">12</div>
+                  <div class="stat-label">Tickets</div>
+                  <div class="stat-value mono" id="statTickets">0</div>
                 </div>
                 <div class="stat">
                   <div class="stat-label">Total</div>
-                  <div class="stat-value mono">245,30 €</div>
+                  <div class="stat-value mono" id="statTotal">0,00 €</div>
                 </div>
                 <div class="stat">
                   <div class="stat-label">Efectivo</div>
-                  <div class="stat-value mono">120,00 €</div>
+                  <div class="stat-value mono" id="statCash">0,00 €</div>
                 </div>
                 <div class="stat">
                   <div class="stat-label">Tarjeta</div>
-                  <div class="stat-value mono">125,30 €</div>
+                  <div class="stat-value mono" id="statCard">0,00 €</div>
                 </div>
               </div>
             </div>
@@ -443,31 +325,18 @@ Archivo: index.html
             <div class="card">
               <h3>Gráfico</h3>
               <div class="chart-placeholder">
-                <div class="muted">Aquí irá el gráfico (Parte C).</div>
+                <div class="muted">Gráficos reales en Parte C (sin librerías o con Chart.js).</div>
               </div>
             </div>
           </div>
 
-          <div class="table card">
+          <div class="table card" id="salesTable">
             <div class="trow thead">
               <div class="tcell">Fecha</div>
-              <div class="tcell">Tickets</div>
-              <div class="tcell">Efectivo</div>
-              <div class="tcell">Tarjeta</div>
+              <div class="tcell">Ticket</div>
+              <div class="tcell">Pago</div>
               <div class="tcell tcell-right">Total</div>
               <div class="tcell tcell-right">Acciones</div>
-            </div>
-
-            <div class="trow">
-              <div class="tcell mono">2026-02-27</div>
-              <div class="tcell mono">12</div>
-              <div class="tcell mono">120,00</div>
-              <div class="tcell mono">125,30</div>
-              <div class="tcell tcell-right mono">245,30 €</div>
-              <div class="tcell tcell-right">
-                <button class="btn btn-ghost btn-small" type="button">Ver</button>
-                <button class="btn btn-ghost btn-small" type="button">Export</button>
-              </div>
             </div>
           </div>
         </div>
@@ -481,29 +350,29 @@ Archivo: index.html
           <div class="page-head">
             <div>
               <h2>Beneficios</h2>
-              <p>Requiere precio compra (opcional en productos).</p>
+              <p>Calculado si hay precio compra (opcional).</p>
             </div>
           </div>
 
           <div class="grid-2">
             <div class="card">
-              <h3>Beneficio bruto (demo)</h3>
+              <h3>Beneficio bruto</h3>
               <div class="stat-grid">
                 <div class="stat">
                   <div class="stat-label">Ventas</div>
-                  <div class="stat-value mono">245,30 €</div>
+                  <div class="stat-value mono" id="profitSales">0,00 €</div>
                 </div>
                 <div class="stat">
                   <div class="stat-label">Coste</div>
-                  <div class="stat-value mono">165,10 €</div>
+                  <div class="stat-value mono" id="profitCost">0,00 €</div>
                 </div>
                 <div class="stat">
                   <div class="stat-label">Beneficio</div>
-                  <div class="stat-value mono">80,20 €</div>
+                  <div class="stat-value mono" id="profitValue">0,00 €</div>
                 </div>
                 <div class="stat">
                   <div class="stat-label">Margen</div>
-                  <div class="stat-value mono">32,7 %</div>
+                  <div class="stat-value mono" id="profitMargin">0,0 %</div>
                 </div>
               </div>
             </div>
@@ -511,15 +380,8 @@ Archivo: index.html
             <div class="card">
               <h3>Gráfico margen</h3>
               <div class="chart-placeholder">
-                <div class="muted">Aquí irá el gráfico (Parte C).</div>
+                <div class="muted">Parte C: gráfico margen por día/producto.</div>
               </div>
-            </div>
-          </div>
-
-          <div class="hint">
-            <div class="hint-title">Tip</div>
-            <div class="hint-body">
-              Si no quieres usar precio compra, esta pestaña puede ocultarse o mostrar solo ventas.
             </div>
           </div>
         </div>
@@ -533,7 +395,7 @@ Archivo: index.html
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Protegido con PIN Admin (UI preparada).</p>
+              <p>Protegido con PIN Admin (local).</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -546,33 +408,44 @@ Archivo: index.html
               <div class="field-row">
                 <label class="field">
                   <span>Nombre tienda</span>
-                  <input value="Tu Tienda" />
+                  <input id="setShopName" value="Tu Tienda" />
                 </label>
                 <label class="field">
                   <span>Subtítulo (CIF / dirección)</span>
-                  <input value="CIF / Dirección / Tel" />
+                  <input id="setShopSub" value="CIF / Dirección / Tel" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Caja</span>
+                  <input id="setBoxName" value="CAJA-1" />
+                </label>
+                <label class="field">
+                  <span>Pie de ticket</span>
+                  <input id="setFooterText" value="Gracias por su compra" />
                 </label>
               </div>
             </div>
 
             <div class="card">
-              <h3>Impresión 80mm</h3>
+              <h3>Venta rápida</h3>
               <div class="field-row">
                 <label class="field">
-                  <span>Ancho ticket</span>
-                  <select>
-                    <option selected>80mm</option>
-                    <option>58mm</option>
+                  <span>Cobro directo (sin modal)</span>
+                  <select id="setDirectPay">
+                    <option value="0" selected>No</option>
+                    <option value="1">Sí</option>
                   </select>
                 </label>
                 <label class="field">
-                  <span>Pie de ticket</span>
-                  <input value="Gracias por su compra" />
+                  <span>Auto-imprimir tras cobrar</span>
+                  <select id="setAutoPrint">
+                    <option value="0" selected>No</option>
+                    <option value="1">Sí</option>
+                  </select>
                 </label>
               </div>
-              <div class="muted small">
-                En Opción 1 se imprime con el navegador (o QZ Tray si lo activas más adelante).
-              </div>
+              <div class="muted small">Recomendado: activar auto-imprimir si la impresora está bien configurada.</div>
             </div>
           </div>
 
@@ -580,31 +453,20 @@ Archivo: index.html
             <h3>Seguridad</h3>
             <div class="field-row">
               <label class="field">
-                <span>PIN Admin</span>
-                <input type="password" value="••••" />
+                <span>PIN Admin (cámbialo)</span>
+                <input id="setAdminPin" type="password" inputmode="numeric" placeholder="••••" />
+                <small>Por defecto: 1234 (cámbialo aquí).</small>
               </label>
               <label class="field">
-                <span>Usuarios caja</span>
-                <select>
-                  <option>Cajero</option>
-                  <option>Encargado</option>
-                  <option>Admin</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Auto backup</span>
-                <select>
-                  <option>Off</option>
-                  <option>Diario</option>
-                  <option>Semanal</option>
-                </select>
+                <span>Nota</span>
+                <input disabled value="Seguridad local (sin nube): protege uso diario en tienda." />
               </label>
             </div>
 
             <div class="hint">
-              <div class="hint-title">Nota</div>
+              <div class="hint-title">PRO</div>
               <div class="hint-body">
-                La protección es local (sin nube). Bloquea acciones sensibles para uso diario de tienda.
+                Parte C añadirá gestión de usuarios, roles, devoluciones avanzadas y cierres Z completos.
               </div>
             </div>
           </div>
@@ -616,18 +478,20 @@ Archivo: index.html
     <!-- ===== FOOTER ===== -->
     <footer class="footer">
       <div class="footer-left">
-        <span class="badge badge-ok">Online/Offline</span>
+        <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right muted">
-        <span class="mono">v1.0</span>
-      </div>
+      <div class="footer-right muted"><span class="mono" id="appVersion">v1.1</span></div>
     </footer>
   </div>
 
-  <!-- =========================
-       MODALS (UI PREPARADA)
-  ========================== -->
+  <!-- PRINT AREA 80MM (solo aparece al imprimir) -->
+  <div id="printArea" class="print-area" aria-hidden="true"></div>
+
+  <!-- TOAST HOST -->
+  <div id="toastHost" class="toast-host" aria-hidden="true"></div>
+
+  <!-- BACKDROP -->
   <div class="modal-backdrop" id="backdrop" hidden></div>
 
   <!-- LOGIN -->
@@ -639,7 +503,6 @@ Archivo: index.html
       </div>
       <button class="icon-btn" data-close="modalLogin" aria-label="Cerrar">✕</button>
     </div>
-
     <div class="modal-body">
       <label class="field">
         <span>Usuario</span>
@@ -648,13 +511,9 @@ Archivo: index.html
       <label class="field">
         <span>Contraseña</span>
         <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+        <small>Por defecto: cajero/1234 · admin/1234</small>
       </label>
-      <div class="hint">
-        <div class="hint-title">Modo local</div>
-        <div class="hint-body">En Parte B guardamos usuarios con hash y roles.</div>
-      </div>
     </div>
-
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalLogin" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnLoginOk" type="button">Entrar</button>
@@ -670,15 +529,13 @@ Archivo: index.html
       </div>
       <button class="icon-btn" data-close="modalAdmin" aria-label="Cerrar">✕</button>
     </div>
-
     <div class="modal-body">
       <label class="field">
         <span>PIN</span>
         <input id="adminPin" type="password" inputmode="numeric" placeholder="••••" />
-        <small>Ej: devoluciones, anular, ajustes.</small>
+        <small>Por defecto: 1234</small>
       </label>
     </div>
-
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalAdmin" type="button">Cancelar</button>
       <button class="btn btn-admin" id="btnAdminOk" type="button">Desbloquear</button>
@@ -699,31 +556,44 @@ Archivo: index.html
       <div class="pay-confirm">
         <div class="pay-big">
           <div class="muted">Total</div>
-          <div class="pay-total mono" id="payTotal">3,88 €</div>
+          <div class="pay-total mono" id="payTotal">0,00 €</div>
         </div>
 
         <div class="field-row">
           <label class="field">
             <span>Método</span>
-            <select>
-              <option>Efectivo</option>
-              <option>Tarjeta</option>
-              <option>Mixto</option>
+            <select id="payMethod">
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="mixto">Mixto</option>
             </select>
           </label>
-          <label class="field">
+
+          <label class="field" id="payGivenWrap">
             <span>Entregado</span>
-            <input inputmode="decimal" placeholder="0,00" />
+            <input id="payGiven" inputmode="decimal" placeholder="0,00" />
+          </label>
+
+          <label class="field" id="payChangeWrap">
+            <span>Cambio</span>
+            <input id="payChange" disabled placeholder="0,00" />
+          </label>
+        </div>
+
+        <div class="field-row" id="paySplitWrap" hidden>
+          <label class="field">
+            <span>Efectivo (mixto)</span>
+            <input id="payCash" inputmode="decimal" placeholder="0,00" />
           </label>
           <label class="field">
-            <span>Cambio</span>
-            <input disabled placeholder="0,00" />
+            <span>Tarjeta (mixto)</span>
+            <input id="payCard" inputmode="decimal" placeholder="0,00" />
           </label>
         </div>
 
         <label class="field">
           <span>Nombre / nota (opcional)</span>
-          <input placeholder="Ej: mesa 2 / cliente…" />
+          <input id="payNote" placeholder="Ej: mesa 2 / cliente…" />
         </label>
       </div>
     </div>
@@ -734,7 +604,38 @@ Archivo: index.html
     </div>
   </dialog>
 
-  <!-- ALTA PRODUCTO (barcode primero) -->
+  <!-- IMPORTE RÁPIDO -->
+  <dialog class="modal" id="modalQuick" aria-label="Importe rápido">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Importe rápido</div>
+        <div class="muted small">Añade una línea manual al ticket</div>
+      </div>
+      <button class="icon-btn" data-close="modalQuick" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <label class="field">
+          <span>Importe (€)</span>
+          <input id="quickAmount" inputmode="decimal" placeholder="0,00" />
+        </label>
+        <label class="field">
+          <span>Nombre (opcional)</span>
+          <input id="quickName" placeholder="Ej: Bolsa, Servicio, Ajuste…" />
+        </label>
+      </div>
+      <div class="hint">
+        <div class="hint-title">Tip</div>
+        <div class="hint-body">Atajo: <span class="kbd">F2</span></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalQuick" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="btnQuickOk" type="button">Añadir</button>
+    </div>
+  </dialog>
+
+  <!-- ALTA PRODUCTO -->
   <dialog class="modal" id="modalProduct" aria-label="Nuevo producto">
     <div class="modal-head">
       <div>
@@ -748,26 +649,26 @@ Archivo: index.html
       <div class="field-row">
         <label class="field">
           <span>Barcode</span>
-          <input inputmode="numeric" placeholder="Escanear o escribir…" />
+          <input id="prodBarcode" inputmode="numeric" placeholder="Escanear o escribir…" />
         </label>
         <label class="field">
           <span>Nombre</span>
-          <input placeholder="Ej: Plátano canario…" />
+          <input id="prodName" placeholder="Ej: Plátano canario…" />
         </label>
       </div>
 
       <div class="field-row">
         <label class="field">
           <span>PVP (IVA incl.)</span>
-          <input inputmode="decimal" placeholder="0,00" />
+          <input id="prodPrice" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
           <span>Compra (opcional)</span>
-          <input inputmode="decimal" placeholder="0,00" />
+          <input id="prodCost" inputmode="decimal" placeholder="0,00" />
         </label>
         <label class="field">
           <span>Categoría</span>
-          <select>
+          <select id="prodCat">
             <option>Fruta</option>
             <option>Verdura</option>
             <option>Tropical</option>
@@ -779,23 +680,23 @@ Archivo: index.html
       <div class="field-row">
         <label class="field">
           <span>Favorito</span>
-          <select>
-            <option>No</option>
-            <option>Sí</option>
+          <select id="prodFav">
+            <option value="0">No</option>
+            <option value="1">Sí</option>
           </select>
         </label>
         <label class="field">
           <span>Unidad</span>
-          <select>
-            <option>Ud</option>
-            <option>Kg</option>
+          <select id="prodUnit">
+            <option value="ud">Ud</option>
+            <option value="kg">Kg</option>
           </select>
         </label>
       </div>
 
       <div class="hint">
-        <div class="hint-title">Tip</div>
-        <div class="hint-body">Si el barcode está vacío, el producto funciona como “manual”.</div>
+        <div class="hint-title">Nota</div>
+        <div class="hint-body">Si no hay barcode, el producto se comporta como manual (sirve para bolsas, etc.).</div>
       </div>
     </div>
 
@@ -818,15 +719,15 @@ Archivo: index.html
     <div class="modal-body">
       <label class="field">
         <span>Email</span>
-        <input type="email" placeholder="cliente@email.com" />
+        <input id="emailTo" type="email" placeholder="cliente@email.com" />
       </label>
       <label class="field">
         <span>Mensaje (opcional)</span>
-        <textarea rows="4" placeholder="Adjuntaremos el ticket en texto (o enlace) en Parte B."></textarea>
+        <textarea id="emailMsg" rows="4" placeholder="Mensaje extra…"></textarea>
       </label>
       <div class="hint">
         <div class="hint-title">Pro</div>
-        <div class="hint-body">Más adelante podemos activar EmailJS (sin backend) si quieres envío automático real.</div>
+        <div class="hint-body">Parte C puede activar EmailJS si quieres envío automático real.</div>
       </div>
     </div>
 
@@ -836,108 +737,6 @@ Archivo: index.html
     </div>
   </dialog>
 
-  <!-- ===== MINIMAL UI SCRIPT (SOLO UI) ===== -->
-  <script>
-    (function () {
-      const $ = (s, r=document) => r.querySelector(s);
-      const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
-
-      // Tabs
-      const tabs = $$('.tab');
-      const pages = $$('.page');
-      function setTab(name) {
-        tabs.forEach(t => {
-          const on = t.dataset.tab === name;
-          t.classList.toggle('is-active', on);
-          t.setAttribute('aria-selected', on ? 'true' : 'false');
-        });
-        pages.forEach(p => p.classList.toggle('is-active', p.dataset.page === name));
-      }
-      tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
-
-      // Theme toggle (default day)
-      const btnTheme = $('#btnTheme');
-      const themeLabel = $('#themeLabel');
-      btnTheme.addEventListener('click', () => {
-        const day = document.body.classList.contains('theme-day');
-        document.body.classList.toggle('theme-day', !day);
-        document.body.classList.toggle('theme-night', day);
-        themeLabel.textContent = day ? 'Noche' : 'Día';
-      });
-
-      // Modal helpers
-      const backdrop = $('#backdrop');
-      function openModal(id) {
-        const d = $('#' + id);
-        if (!d) return;
-        backdrop.hidden = false;
-        d.showModal();
-        // focus preference
-        const focusEl = d.querySelector('input,select,textarea,button');
-        if (focusEl) setTimeout(() => focusEl.focus(), 20);
-      }
-      function closeModal(id) {
-        const d = $('#' + id);
-        if (!d) return;
-        d.close();
-        backdrop.hidden = true;
-        // keep barcode focus for POS speed
-        const b = $('#barcodeInput');
-        if (b) setTimeout(() => b.focus(), 30);
-      }
-
-      backdrop.addEventListener('click', () => {
-        // close any open dialog
-        const open = document.querySelector('dialog[open]');
-        if (open) closeModal(open.id);
-      });
-
-      $$('[data-close]').forEach(btn => {
-        btn.addEventListener('click', () => closeModal(btn.dataset.close));
-      });
-
-      // Buttons -> modals
-      $('#btnLogin').addEventListener('click', () => openModal('modalLogin'));
-      $('#btnAdmin').addEventListener('click', () => openModal('modalAdmin'));
-      $('#btnAdminUnlock').addEventListener('click', () => openModal('modalAdmin'));
-      $('#btnPay').addEventListener('click', () => openModal('modalPay'));
-      $('#btnQuickAmount').addEventListener('click', () => openModal('modalPay'));
-      $('#btnAddProduct').addEventListener('click', () => openModal('modalProduct'));
-      $('#btnAddProductInline').addEventListener('click', () => openModal('modalProduct'));
-      $('#btnEmailTicket').addEventListener('click', () => openModal('modalEmail'));
-
-      // Print demo (UI)
-      $('#btnPrint').addEventListener('click', () => window.print());
-
-      // Set "Hoy" label
-      const d = new Date();
-      const pad = n => (n<10?'0':'')+n;
-      $('#ticketDate').textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-      // Focus barcode by default
-      const b = $('#barcodeInput');
-      if (b) setTimeout(() => b.focus(), 50);
-
-      // Chips UI
-      $$('.chip').forEach(c => c.addEventListener('click', () => {
-        $$('.chip').forEach(x => x.classList.remove('is-active'));
-        c.classList.add('is-active');
-      }));
-
-      // Payment tabs UI
-      $$('.pay-tab').forEach(p => p.addEventListener('click', () => {
-        $$('.pay-tab').forEach(x => x.classList.remove('is-active'));
-        p.classList.add('is-active');
-      }));
-
-      // Enter-to-close demo
-      $('#btnLoginOk').addEventListener('click', () => closeModal('modalLogin'));
-      $('#btnAdminOk').addEventListener('click', () => closeModal('modalAdmin'));
-      $('#btnPayOk').addEventListener('click', () => closeModal('modalPay'));
-      $('#btnProductSave').addEventListener('click', () => closeModal('modalProduct'));
-      $('#btnEmailSend').addEventListener('click', () => closeModal('modalEmail'));
-    })();
-  </script>
-
+  <script src="app.js" defer></script>
 </body>
 </html>
