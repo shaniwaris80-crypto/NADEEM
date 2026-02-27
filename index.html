@@ -1,12 +1,12 @@
 <!-- =========================
-TPV TIENDA — B/W PRO (OPCIÓN 1 / GITHUB)
-Archivo: index.html  (REGENERADO MEJORADO)
+TPV TIENDA — B/W PRO (OPCIÓN 1 / GITHUB) — PAQUETE PRO
+Archivo: index.html
 - UI PRO + POS split
-- Tabs arriba
-- Ajustes conectables (ids)
-- PrintArea dedicado 80mm
-- Modales: Login, Admin PIN, Cobro, Importe rápido, Producto, Email
-- Sin script inline (todo en app.js)
+- Barcode global listener (en app.js)
+- Categorías: crear/renombrar/asignar
+- Importe rápido: teclado numérico en pantalla
+- Tickets aparcados múltiples
+- PrintArea 80mm
 ========================= -->
 <!doctype html>
 <html lang="es">
@@ -15,7 +15,9 @@ Archivo: index.html  (REGENERADO MEJORADO)
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
   <title>TPV TIENDA — B/W PRO</title>
-  <link rel="stylesheet" href="styles.css" />
+
+  <!-- IMPORTANTE: ./ para evitar rutas raras en GitHub Pages -->
+  <link rel="stylesheet" href="./styles.css?v=1.2" />
 </head>
 
 <body class="theme-day">
@@ -73,14 +75,18 @@ Archivo: index.html  (REGENERADO MEJORADO)
             <div class="panel-head">
               <div class="panel-title">
                 <h2>Venta rápida</h2>
-                <p>Escáner · búsqueda · favoritos</p>
+                <p>Escáner · categorías · favoritos</p>
               </div>
 
               <div class="panel-tools">
-                <button class="btn btn-soft" id="btnQuickAmount" type="button">+ Importe rápido</button>
+                <button class="btn btn-soft" id="btnQuickAmount" type="button">+ Importe</button>
 
-                <button class="btn btn-soft" id="btnPark" type="button" title="Aparcar / Recuperar carrito">
-                  Aparcar <span class="badge badge-mini" id="parkBadge" hidden>1</span>
+                <button class="btn btn-soft" id="btnPark" type="button" title="Aparcar / Ver aparcados">
+                  Aparcar <span class="badge badge-mini" id="parkBadge" hidden>0</span>
+                </button>
+
+                <button class="btn btn-ghost" id="btnCats" type="button" title="Gestionar categorías">
+                  Categorías
                 </button>
               </div>
             </div>
@@ -88,25 +94,20 @@ Archivo: index.html  (REGENERADO MEJORADO)
             <div class="card">
               <div class="field-row">
                 <label class="field">
-                  <span>Escanear / Barcode</span>
-                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (siempre enfocado)" />
-                  <small>El lector suele escribir + Enter. Click fuera: vuelve el foco aquí.</small>
+                  <span>Barcode (opcional, manual)</span>
+                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Puedes escanear aquí, pero NO hace falta (modo global)" />
+                  <small>Modo PRO: el sistema detecta escaneo global automáticamente.</small>
                 </label>
 
                 <label class="field">
                   <span>Buscar producto</span>
-                  <input id="searchInput" autocomplete="off" placeholder="Nombre del producto…" />
-                  <small>Filtra favoritos/catálogo por nombre o barcode.</small>
+                  <input id="searchInput" autocomplete="off" placeholder="Nombre o barcode…" />
+                  <small>Filtra el grid de productos.</small>
                 </label>
               </div>
 
-              <div class="chips">
-                <button class="chip is-active" type="button" data-cat="favoritos">Favoritos</button>
-                <button class="chip" type="button" data-cat="fruta">Fruta</button>
-                <button class="chip" type="button" data-cat="verdura">Verdura</button>
-                <button class="chip" type="button" data-cat="tropical">Tropical</button>
-                <button class="chip" type="button" data-cat="otros">Otros</button>
-              </div>
+              <!-- Chips dinámicos -->
+              <div class="chips" id="catChips"></div>
             </div>
 
             <div class="section-title">
@@ -217,7 +218,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
                   <button class="btn btn-primary" id="btnPay" type="button">Cobrar</button>
                 </div>
 
-                <div class="mini-note muted">Ticket 80mm · IVA incluido · Envío email (mailto)</div>
+                <div class="mini-note muted">Ticket 80mm · IVA incluido · Escaneo global siempre activo</div>
               </div>
             </div>
 
@@ -233,11 +234,12 @@ Archivo: index.html  (REGENERADO MEJORADO)
           <div class="page-head">
             <div>
               <h2>Productos</h2>
-              <p>Alta (barcode primero), edición, favoritos, import/export (Parte C).</p>
+              <p>Alta, edición, favoritos, import/export CSV.</p>
             </div>
             <div class="page-actions">
+              <button class="btn btn-soft" id="btnCats2" type="button">Categorías</button>
               <button class="btn btn-soft" id="btnImportCsv" type="button">Importar CSV</button>
-              <button class="btn btn-soft" id="btnExport" type="button">Exportar</button>
+              <button class="btn btn-soft" id="btnExportCsv" type="button">Exportar CSV</button>
               <button class="btn btn-primary" id="btnAddProduct" type="button">+ Nuevo producto</button>
             </div>
           </div>
@@ -254,13 +256,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
               </label>
               <label class="field">
                 <span>Categoría</span>
-                <select id="prodSearchCat">
-                  <option value="">Todas</option>
-                  <option>Fruta</option>
-                  <option>Verdura</option>
-                  <option>Tropical</option>
-                  <option>Otros</option>
-                </select>
+                <select id="prodSearchCat"></select>
               </label>
             </div>
           </div>
@@ -277,8 +273,10 @@ Archivo: index.html  (REGENERADO MEJORADO)
           </div>
 
           <div class="hint">
-            <div class="hint-title">Tip</div>
-            <div class="hint-body">Parte C mete import/export real CSV/JSON + edición completa masiva.</div>
+            <div class="hint-title">CSV</div>
+            <div class="hint-body">
+              Columnas: <span class="mono">barcode,name,price,cost,category,fav,unit</span>
+            </div>
           </div>
         </div>
       </section>
@@ -291,11 +289,12 @@ Archivo: index.html  (REGENERADO MEJORADO)
           <div class="page-head">
             <div>
               <h2>Ventas / Reportes</h2>
-              <p>Resumen local (Parte C añade gráficos reales y cierres Z completos).</p>
+              <p>Historial, reimpresión y Cierre Z (arqueo).</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnCloseZ" type="button">Cierre Z</button>
-              <button class="btn btn-soft" id="btnExportSales" type="button">Exportar ventas</button>
+              <button class="btn btn-soft" id="btnExportSalesJson" type="button">Exportar JSON</button>
+              <button class="btn btn-soft" id="btnImportSalesJson" type="button">Importar JSON</button>
             </div>
           </div>
 
@@ -323,9 +322,9 @@ Archivo: index.html  (REGENERADO MEJORADO)
             </div>
 
             <div class="card">
-              <h3>Gráfico</h3>
-              <div class="chart-placeholder">
-                <div class="muted">Gráficos reales en Parte C (sin librerías o con Chart.js).</div>
+              <h3>Cierres Z</h3>
+              <div class="chart-placeholder" id="closingsBox">
+                <div class="muted">Sin cierres todavía.</div>
               </div>
             </div>
           </div>
@@ -378,9 +377,9 @@ Archivo: index.html  (REGENERADO MEJORADO)
             </div>
 
             <div class="card">
-              <h3>Gráfico margen</h3>
+              <h3>Nota</h3>
               <div class="chart-placeholder">
-                <div class="muted">Parte C: gráfico margen por día/producto.</div>
+                <div class="muted">Parte PRO: ya calcula beneficio y margen por ventas guardadas.</div>
               </div>
             </div>
           </div>
@@ -395,7 +394,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Protegido con PIN Admin (local).</p>
+              <p>PIN Admin local · backups · velocidad caja.</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -428,7 +427,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
             </div>
 
             <div class="card">
-              <h3>Venta rápida</h3>
+              <h3>Velocidad</h3>
               <div class="field-row">
                 <label class="field">
                   <span>Cobro directo (sin modal)</span>
@@ -445,7 +444,25 @@ Archivo: index.html  (REGENERADO MEJORADO)
                   </select>
                 </label>
               </div>
-              <div class="muted small">Recomendado: activar auto-imprimir si la impresora está bien configurada.</div>
+
+              <div class="field-row">
+                <label class="field">
+                  <span>Auto-cambiar a “Venta” al escanear</span>
+                  <select id="setAutoGoSale">
+                    <option value="1" selected>Sí</option>
+                    <option value="0">No</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Beep al escanear</span>
+                  <select id="setBeep">
+                    <option value="1" selected>Sí</option>
+                    <option value="0">No</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="muted small">Escaneo global siempre activo: detecta teclado/lector y añade al instante.</div>
             </div>
           </div>
 
@@ -458,16 +475,17 @@ Archivo: index.html  (REGENERADO MEJORADO)
                 <small>Por defecto: 1234 (cámbialo aquí).</small>
               </label>
               <label class="field">
-                <span>Nota</span>
-                <input disabled value="Seguridad local (sin nube): protege uso diario en tienda." />
+                <span>Backup</span>
+                <div class="row-btns">
+                  <button class="btn btn-soft" id="btnExportJson" type="button">Exportar JSON</button>
+                  <button class="btn btn-soft" id="btnImportJson" type="button">Importar JSON</button>
+                </div>
               </label>
             </div>
 
             <div class="hint">
-              <div class="hint-title">PRO</div>
-              <div class="hint-body">
-                Parte C añadirá gestión de usuarios, roles, devoluciones avanzadas y cierres Z completos.
-              </div>
+              <div class="hint-title">Usuarios demo</div>
+              <div class="hint-body">cajero/1234 · admin/1234 · PIN Admin: 1234</div>
             </div>
           </div>
         </div>
@@ -481,14 +499,14 @@ Archivo: index.html  (REGENERADO MEJORADO)
         <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right muted"><span class="mono" id="appVersion">v1.1</span></div>
+      <div class="footer-right muted"><span class="mono" id="appVersion">v1.2 PRO</span></div>
     </footer>
   </div>
 
-  <!-- PRINT AREA 80MM (solo aparece al imprimir) -->
+  <!-- PRINT AREA 80MM -->
   <div id="printArea" class="print-area" aria-hidden="true"></div>
 
-  <!-- TOAST HOST -->
+  <!-- TOAST -->
   <div id="toastHost" class="toast-host" aria-hidden="true"></div>
 
   <!-- BACKDROP -->
@@ -604,7 +622,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
     </div>
   </dialog>
 
-  <!-- IMPORTE RÁPIDO -->
+  <!-- IMPORTE RÁPIDO (TECLADO NUMÉRICO) -->
   <dialog class="modal" id="modalQuick" aria-label="Importe rápido">
     <div class="modal-head">
       <div>
@@ -613,34 +631,111 @@ Archivo: index.html  (REGENERADO MEJORADO)
       </div>
       <button class="icon-btn" data-close="modalQuick" aria-label="Cerrar">✕</button>
     </div>
+
     <div class="modal-body">
-      <div class="field-row">
-        <label class="field">
-          <span>Importe (€)</span>
-          <input id="quickAmount" inputmode="decimal" placeholder="0,00" />
-        </label>
-        <label class="field">
-          <span>Nombre (opcional)</span>
-          <input id="quickName" placeholder="Ej: Bolsa, Servicio, Ajuste…" />
-        </label>
-      </div>
-      <div class="hint">
-        <div class="hint-title">Tip</div>
-        <div class="hint-body">Atajo: <span class="kbd">F2</span></div>
+      <div class="quick-grid">
+        <div class="quick-left">
+          <label class="field">
+            <span>Importe (€)</span>
+            <input id="quickAmount" inputmode="decimal" placeholder="0,00" />
+            <small>Usa el teclado numérico o escribe.</small>
+          </label>
+
+          <label class="field">
+            <span>Nombre (opcional)</span>
+            <input id="quickName" placeholder="Ej: Bolsa, Servicio, Ajuste…" />
+          </label>
+
+          <div class="hint">
+            <div class="hint-title">Atajo</div>
+            <div class="hint-body"><span class="kbd">F2</span> abre Importe rápido</div>
+          </div>
+        </div>
+
+        <div class="keypad" id="keypad">
+          <button class="key" data-k="7" type="button">7</button>
+          <button class="key" data-k="8" type="button">8</button>
+          <button class="key" data-k="9" type="button">9</button>
+          <button class="key key-alt" data-k="bk" type="button">⌫</button>
+
+          <button class="key" data-k="4" type="button">4</button>
+          <button class="key" data-k="5" type="button">5</button>
+          <button class="key" data-k="6" type="button">6</button>
+          <button class="key key-alt" data-k="c" type="button">C</button>
+
+          <button class="key" data-k="1" type="button">1</button>
+          <button class="key" data-k="2" type="button">2</button>
+          <button class="key" data-k="3" type="button">3</button>
+          <button class="key key-alt" data-k="00" type="button">00</button>
+
+          <button class="key key-wide" data-k="0" type="button">0</button>
+          <button class="key" data-k="." type="button">,</button>
+          <button class="key key-ok" data-k="ok" type="button">OK</button>
+        </div>
       </div>
     </div>
+
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalQuick" type="button">Cancelar</button>
       <button class="btn btn-primary" id="btnQuickOk" type="button">Añadir</button>
     </div>
   </dialog>
 
-  <!-- ALTA PRODUCTO -->
-  <dialog class="modal" id="modalProduct" aria-label="Nuevo producto">
+  <!-- APARCADOS (MULTI) -->
+  <dialog class="modal" id="modalParked" aria-label="Tickets aparcados">
     <div class="modal-head">
       <div>
-        <div class="modal-title">Nuevo producto</div>
-        <div class="muted small">Barcode → nombre → precios</div>
+        <div class="modal-title">Aparcados</div>
+        <div class="muted small">Guardar / recuperar tickets</div>
+      </div>
+      <button class="icon-btn" data-close="modalParked" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="parked-list" id="parkedList"></div>
+      <div class="muted small">Tip: puedes renombrar para “Mesa 2”, “Cliente”, etc.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalParked" type="button">Cerrar</button>
+      <button class="btn btn-primary" id="btnParkNow" type="button">Aparcar ticket actual</button>
+    </div>
+  </dialog>
+
+  <!-- CATEGORÍAS (PRO) -->
+  <dialog class="modal" id="modalCats" aria-label="Categorías">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Categorías</div>
+        <div class="muted small">Crear / renombrar / borrar</div>
+      </div>
+      <button class="icon-btn" data-close="modalCats" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="cats-add">
+        <label class="field">
+          <span>Nueva categoría</span>
+          <input id="newCatName" placeholder="Ej: Pan, Bebidas, Eco…" />
+        </label>
+        <button class="btn btn-primary" id="btnAddCat" type="button">Añadir</button>
+      </div>
+
+      <div class="cats-list" id="catsList"></div>
+
+      <div class="hint">
+        <div class="hint-title">Reglas</div>
+        <div class="hint-body">“Otros” siempre existe. Si borras una categoría, los productos pasan a “Otros”.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalCats" type="button">Cerrar</button>
+    </div>
+  </dialog>
+
+  <!-- ALTA / EDIT PRODUCTO -->
+  <dialog class="modal" id="modalProduct" aria-label="Producto">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="prodTitle">Nuevo producto</div>
+        <div class="muted small">Barcode → nombre → precios → categoría</div>
       </div>
       <button class="icon-btn" data-close="modalProduct" aria-label="Cerrar">✕</button>
     </div>
@@ -668,12 +763,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
         </label>
         <label class="field">
           <span>Categoría</span>
-          <select id="prodCat">
-            <option>Fruta</option>
-            <option>Verdura</option>
-            <option>Tropical</option>
-            <option>Otros</option>
-          </select>
+          <select id="prodCat"></select>
         </label>
       </div>
 
@@ -693,11 +783,6 @@ Archivo: index.html  (REGENERADO MEJORADO)
           </select>
         </label>
       </div>
-
-      <div class="hint">
-        <div class="hint-title">Nota</div>
-        <div class="hint-body">Si no hay barcode, el producto se comporta como manual (sirve para bolsas, etc.).</div>
-      </div>
     </div>
 
     <div class="modal-foot">
@@ -711,7 +796,7 @@ Archivo: index.html  (REGENERADO MEJORADO)
     <div class="modal-head">
       <div>
         <div class="modal-title">Enviar ticket</div>
-        <div class="muted small">Opción 1: mailto (sin servidor)</div>
+        <div class="muted small">mailto (sin servidor)</div>
       </div>
       <button class="icon-btn" data-close="modalEmail" aria-label="Cerrar">✕</button>
     </div>
@@ -725,10 +810,6 @@ Archivo: index.html  (REGENERADO MEJORADO)
         <span>Mensaje (opcional)</span>
         <textarea id="emailMsg" rows="4" placeholder="Mensaje extra…"></textarea>
       </label>
-      <div class="hint">
-        <div class="hint-title">Pro</div>
-        <div class="hint-body">Parte C puede activar EmailJS si quieres envío automático real.</div>
-      </div>
     </div>
 
     <div class="modal-foot">
@@ -737,6 +818,59 @@ Archivo: index.html  (REGENERADO MEJORADO)
     </div>
   </dialog>
 
-  <script src="app.js" defer></script>
+  <!-- CIERRE Z -->
+  <dialog class="modal" id="modalCloseZ" aria-label="Cierre Z">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Cierre Z</div>
+        <div class="muted small">Arqueo (efectivo contado) + descuadre</div>
+      </div>
+      <button class="icon-btn" data-close="modalCloseZ" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="closez-grid">
+        <div class="card-mini">
+          <div class="muted small">Total ventas</div>
+          <div class="mono big" id="zTotal">0,00 €</div>
+        </div>
+        <div class="card-mini">
+          <div class="muted small">Efectivo esperado</div>
+          <div class="mono big" id="zCash">0,00 €</div>
+        </div>
+        <div class="card-mini">
+          <div class="muted small">Tarjeta</div>
+          <div class="mono big" id="zCard">0,00 €</div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Efectivo contado</span>
+          <input id="zCounted" inputmode="decimal" placeholder="0,00" />
+        </label>
+        <label class="field">
+          <span>Descuadre</span>
+          <input id="zDiff" disabled placeholder="0,00" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Nota (opcional)</span>
+        <input id="zNote" placeholder="Ej: cambio inicial, incidencia…" />
+      </label>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalCloseZ" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="btnCloseZOk" type="button">Guardar Cierre Z</button>
+    </div>
+  </dialog>
+
+  <!-- FILE INPUTS (hidden) -->
+  <input id="fileJson" type="file" accept="application/json" hidden />
+  <input id="fileCsv" type="file" accept=".csv,text/csv" hidden />
+
+  <script src="./app.js?v=1.2" defer></script>
 </body>
 </html>
