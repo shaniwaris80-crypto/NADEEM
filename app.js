@@ -1917,49 +1917,33 @@ Mantiene todo lo anterior:
   /* =========================
      NUMPAD
   ========================== */
-  function setNumpadTarget(numpadEl, inputId) {
-    if (!numpadEl) return;
-    numpadEl.dataset.target = inputId;
-  }
+function bindNumpads() {
+  // ✅ Evita doble binding (causa del "doble click")
+  if (__NUMPADS_BOUND__) return;
+  __NUMPADS_BOUND__ = true;
 
-  function applyNumpadKey(numpadEl, key) {
-    if (!numpadEl) return;
-    const targetId = numpadEl.dataset.target;
-    const input = document.getElementById(targetId);
-    if (!input) return;
+  // Quick numpad
+  el.numpadQuick?.addEventListener('click', (e) => {
+    const k = e.target?.dataset?.k;
+    if (!k) return;
+    if (k === 'ok') { el.btnQuickOk.click(); return; }
+    applyNumpadKey(el.numpadQuick, k);
+  });
 
-    const { total } = cartTotals();
+  // Pay numpad
+  el.numpadPay?.addEventListener('click', (e) => {
+    const k = e.target?.dataset?.k;
+    if (!k) return;
+    if (k === 'ok') { el.btnPayOk.click(); return; }
+    applyNumpadKey(el.numpadPay, k);
+    calcPayChange();
+  });
 
-    if (key === 'ok') { input.dispatchEvent(new Event('change', { bubbles: true })); return; }
-    if (key === 'back') { input.value = input.value.slice(0, -1); input.dispatchEvent(new Event('input', { bubbles: true })); return; }
-    if (key === 'clear') { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); return; }
-    if (key === 'full') { input.value = fmtMoney(total).replace('.', ','); input.dispatchEvent(new Event('input', { bubbles: true })); return; }
-    if (key === 'plus10') { const v = parseMoney(input.value || '0') + 10; input.value = fmtMoney(v).replace('.', ','); input.dispatchEvent(new Event('input', { bubbles: true })); return; }
-    if (key === ',') { if (!input.value.includes(',')) input.value += ','; input.dispatchEvent(new Event('input', { bubbles: true })); return; }
-    if (/^\d$/.test(key)) { input.value += key; input.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
-
-  function bindNumpads() {
-    el.numpadQuick?.addEventListener('click', (e) => {
-      const k = e.target?.dataset?.k;
-      if (!k) return;
-      if (k === 'ok') { el.btnQuickOk.click(); return; }
-      applyNumpadKey(el.numpadQuick, k);
-    });
-
-    el.numpadPay?.addEventListener('click', (e) => {
-      const k = e.target?.dataset?.k;
-      if (!k) return;
-      if (k === 'ok') { el.btnPayOk.click(); return; }
-      applyNumpadKey(el.numpadPay, k);
-      calcPayChange();
-    });
-
-    el.payGiven?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payGiven'));
-    el.payCash?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCash'));
-    el.payCard?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCard'));
-  }
-
+  // target switch on focus
+  el.payGiven?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payGiven'));
+  el.payCash?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCash'));
+  el.payCard?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCard'));
+}
   /* =========================
      SCAN ENGINE (GLOBAL + DOUBLE BEEP ON DUP)
   ========================== */
