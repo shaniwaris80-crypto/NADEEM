@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
   <title>TPV NADEEM — B/W PRO</title>
-  <link rel="stylesheet" href="./styles.css?v=PRO2" />
+  <link rel="stylesheet" href="./styles.css?v=PRO3" />
 </head>
 
 <body class="theme-day">
@@ -90,7 +90,7 @@
                 <label class="field">
                   <span>Escanear / Barcode</span>
                   <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (o escribe y Enter)" />
-                  <small>Si no existe → te lleva a registrar automáticamente.</small>
+                  <small>Si no existe → registrar automático (Admin PIN).</small>
                 </label>
 
                 <label class="field">
@@ -126,6 +126,7 @@
               <div class="hint-title">Atajos</div>
               <div class="hint-body">
                 <span class="kbd">F2</span> Importe ·
+                <span class="kbd">F3</span> Descuento ·
                 <span class="kbd">F4</span> Cobrar ·
                 <span class="kbd">Supr</span> Borrar última ·
                 <span class="kbd">Esc</span> Cerrar modales / limpiar ·
@@ -143,6 +144,7 @@
               </div>
 
               <div class="panel-tools">
+                <button class="btn btn-ghost" id="btnDiscount" type="button" title="Descuento (puede requerir Admin)">Descuento</button>
                 <button class="btn btn-ghost" id="btnLastTicket" type="button" title="Último ticket">Último</button>
                 <button class="btn btn-ghost" id="btnEmailTicket" type="button" title="Enviar por correo">Email</button>
                 <button class="btn btn-ghost" id="btnPrint" type="button" title="Imprimir 80mm">Imprimir</button>
@@ -180,10 +182,18 @@
                     <span class="muted">Subtotal</span>
                     <span class="mono" id="subTotal">0,00 €</span>
                   </div>
+
+                  <!-- descuento visible si aplica -->
+                  <div class="total-row" id="discountRow" hidden>
+                    <span class="muted">Descuento</span>
+                    <span class="mono" id="discountValue">0,00 €</span>
+                  </div>
+
                   <div class="total-row">
                     <span class="muted">IVA</span>
                     <span class="mono">Incluido</span>
                   </div>
+
                   <div class="total-row total-strong">
                     <span>Total</span>
                     <span class="mono" id="grandTotal">0,00 €</span>
@@ -214,7 +224,7 @@
 
                   <div class="mini-row">
                     <button class="btn btn-soft" id="btnNumpadGiven" type="button">Teclado</button>
-                    <div class="muted small">F4 cobrar · F2 importe</div>
+                    <div class="muted small">F4 cobrar · F3 descuento · F2 importe</div>
                   </div>
                 </div>
 
@@ -224,7 +234,7 @@
                   <button class="btn btn-primary" id="btnPay" type="button">Cobrar</button>
                 </div>
 
-                <div class="mini-note muted">Ticket 80mm · Email (mailto) · Escaneo permanente</div>
+                <div class="mini-note muted">Ticket 80mm PRO · Email (mailto) · Escaneo permanente</div>
               </div>
             </div>
           </section>
@@ -240,11 +250,13 @@
           <div class="page-head">
             <div>
               <h2>Productos</h2>
-              <p>Librería profesional · Orden A–Z · Páginas · Backup</p>
+              <p>Librería profesional · Orden A–Z · Páginas · Backup/CSV</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnExportBackup" type="button">Backup JSON</button>
               <button class="btn btn-soft" id="btnImportBackup" type="button">Import JSON</button>
+              <button class="btn btn-soft" id="btnExportCSV" type="button">Export CSV</button>
+              <button class="btn btn-soft" id="btnImportCSV" type="button">Import CSV</button>
               <button class="btn btn-primary" id="btnAddProduct" type="button">+ Nuevo</button>
             </div>
           </div>
@@ -294,6 +306,10 @@
                 </label>
               </div>
             </div>
+
+            <div class="muted small" style="margin-top:10px;">
+              CSV columnas: <span class="mono">barcode,name,category,price,cost,fav</span>
+            </div>
           </div>
 
           <div class="table card" id="productsTable">
@@ -311,6 +327,7 @@
           </div>
 
           <input type="file" id="fileImport" accept="application/json" hidden />
+          <input type="file" id="fileImportCSV" accept=".csv,text/csv" hidden />
         </div>
       </section>
 
@@ -322,7 +339,7 @@
           <div class="page-head">
             <div>
               <h2>Ventas / Reportes</h2>
-              <p>Periodo abierto + Historial Z</p>
+              <p>Periodo abierto + Historial Z (con arqueo)</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnPrintX" type="button">Imprimir X</button>
@@ -373,7 +390,7 @@
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Admin PIN · Kiosko · Backup · Z</p>
+              <p>Admin PIN · Usuarios PIN · Permisos · Kiosko · Backup · Z</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -451,8 +468,68 @@
             </div>
           </div>
 
+          <div class="grid-2">
+            <div class="card">
+              <h3>Permisos por acción</h3>
+              <div class="field-row">
+                <label class="field">
+                  <span>Requiere Admin para borrar línea</span>
+                  <select id="setPermDeleteLine">
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Requiere Admin para anular ticket</span>
+                  <select id="setPermVoid">
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </label>
+              </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Requiere Admin para descuento</span>
+                  <select id="setPermDiscount">
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Requiere Admin para editar precio</span>
+                  <select id="setPermPriceEdit">
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </label>
+              </div>
+              <div class="muted small">
+                Tip: editar precio → tocar PVP de la línea en el ticket.
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Usuarios (PIN individual)</h3>
+              <div class="field-row">
+                <label class="field">
+                  <span>Usuario</span>
+                  <select id="setUserSelect"></select>
+                  <small>Admin puede cambiar PIN de cualquier usuario.</small>
+                </label>
+                <label class="field">
+                  <span>Nuevo PIN (4+ dígitos)</span>
+                  <input id="setUserPin" type="password" inputmode="numeric" placeholder="••••" />
+                  <small>Por defecto: cajero 1234 · admin 1234</small>
+                </label>
+              </div>
+              <div class="btn-row">
+                <button class="btn btn-admin" id="btnUserPinSave" type="button">Guardar PIN</button>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
-            <h3>Seguridad</h3>
+            <h3>Seguridad Admin</h3>
             <div class="field-row">
               <label class="field">
                 <span>PIN Admin (cambiar)</span>
@@ -488,7 +565,7 @@
           <div class="card">
             <h3>About</h3>
             <div class="muted small">
-              TPV NADEEM — B/W PRO · Local · vPRO2<br/>
+              TPV NADEEM — B/W PRO · Local · vPRO3<br/>
               <span class="mono">Made by Arslan Waris · All rights reserved</span>
             </div>
           </div>
@@ -503,7 +580,7 @@
         <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right muted"><span class="mono" id="version">vPRO2</span></div>
+      <div class="footer-right muted"><span class="mono" id="version">vPRO3</span></div>
     </footer>
   </div>
 
@@ -520,12 +597,12 @@
        MODALS (COMPLETOS)
   ========================================================== -->
 
-  <!-- LOGIN -->
+  <!-- LOGIN (usuario + PIN) -->
   <dialog class="modal" id="modalLogin" aria-label="Login">
     <div class="modal-head">
       <div>
         <div class="modal-title">Login caja</div>
-        <div class="muted small">Usuario + contraseña (local)</div>
+        <div class="muted small">Usuario + PIN (local)</div>
       </div>
       <button class="icon-btn" data-close="modalLogin" aria-label="Cerrar">✕</button>
     </div>
@@ -535,8 +612,8 @@
         <input id="loginUser" autocomplete="username" placeholder="cajero" />
       </label>
       <label class="field">
-        <span>Contraseña</span>
-        <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+        <span>PIN</span>
+        <input id="loginPass" type="password" inputmode="numeric" autocomplete="current-password" placeholder="••••" />
         <small>Por defecto: cajero/1234 · admin/1234</small>
       </label>
     </div>
@@ -565,6 +642,45 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="modalAdmin" type="button">Cancelar</button>
       <button class="btn btn-admin" id="btnAdminOk" type="button">Desbloquear</button>
+    </div>
+  </dialog>
+
+  <!-- DESCUENTO -->
+  <dialog class="modal" id="modalDiscount" aria-label="Descuento">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Descuento</div>
+        <div class="muted small">Por ticket (puede requerir Admin)</div>
+      </div>
+      <button class="icon-btn" data-close="modalDiscount" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="field-row">
+        <label class="field">
+          <span>Tipo</span>
+          <select id="discountType">
+            <option value="amount">€ (importe)</option>
+            <option value="percent">% (porcentaje)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Valor</span>
+          <input id="discountInput" inputmode="decimal" placeholder="0,00" />
+          <small>Ej: 1,50  ó  10 (%)</small>
+        </label>
+      </div>
+
+      <div class="hint" style="margin:0;">
+        <div class="hint-title">Tip</div>
+        <div class="hint-body">Atajo: <span class="kbd">F3</span>. Para quitar descuento: valor 0.</div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modalDiscount" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="btnDiscountOk" type="button">Aplicar</button>
     </div>
   </dialog>
 
@@ -792,19 +908,33 @@
     </div>
   </dialog>
 
-  <!-- CIERRE Z CONFIRM -->
+  <!-- CIERRE Z CONFIRM (CON ARQUEO) -->
   <dialog class="modal" id="modalZ" aria-label="Cierre Z">
     <div class="modal-head">
       <div>
         <div class="modal-title">Cierre Z</div>
-        <div class="muted small">Imprime reporte y pone a 0</div>
+        <div class="muted small">Imprime reporte + arqueo y pone a 0</div>
       </div>
       <button class="icon-btn" data-close="modalZ" aria-label="Cerrar">✕</button>
     </div>
 
     <div class="modal-body">
       <div class="z-preview" id="zPreview">—</div>
-      <div class="hint">
+
+      <div class="field-row" style="margin-top:12px;">
+        <label class="field">
+          <span>Efectivo contado (arqueo)</span>
+          <input id="zCountedCash" inputmode="decimal" placeholder="0,00" />
+          <small>Se calcula el descuadre: contado - esperado.</small>
+        </label>
+        <label class="field">
+          <span>Descuadre (auto)</span>
+          <input id="zDiffCash" inputmode="decimal" placeholder="0,00" disabled />
+          <small>Si es negativo, falta efectivo.</small>
+        </label>
+      </div>
+
+      <div class="hint" style="margin:0;">
         <div class="hint-title">Importante</div>
         <div class="hint-body">Después de imprimir, el periodo abierto se limpia y queda a 0. El cierre se guarda en Historial Z.</div>
       </div>
@@ -816,6 +946,6 @@
     </div>
   </dialog>
 
-  <script src="./app.js?v=PRO2" defer></script>
+  <script src="./app.js?v=PRO3" defer></script>
 </body>
 </html>
