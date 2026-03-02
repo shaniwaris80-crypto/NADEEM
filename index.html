@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b3d2e" />
   <title>TPV NADEEM — B/W PRO</title>
-  <link rel="stylesheet" href="./styles.css?v=PRO1" />
+  <link rel="stylesheet" href="./styles.css?v=PRO2" />
 </head>
 
 <body class="theme-day">
   <div class="app" id="app">
 
-    <!-- TOP BAR -->
+    <!-- ===== TOP BAR ===== -->
     <header class="topbar">
       <div class="brand">
         <div class="logo" aria-hidden="true">TPV</div>
@@ -48,7 +48,7 @@
       </div>
     </header>
 
-    <!-- KIOSK BAR (solo visible en modo kiosko) -->
+    <!-- ===== KIOSK BAR ===== -->
     <div class="kiosk-bar" id="kioskBar" hidden>
       <div class="kiosk-left">
         <span class="badge badge-ok">KIOSKO</span>
@@ -59,13 +59,16 @@
       </div>
     </div>
 
+    <!-- ===== MAIN ===== -->
     <main class="main">
 
-      <!-- ===== VENTA ===== -->
+      <!-- =========================================================
+           TAB: VENTA (DEFAULT)
+      ========================================================== -->
       <section class="page is-active" data-page="venta" id="pageVenta">
         <div class="pos-grid">
 
-          <!-- IZQUIERDA -->
+          <!-- ===== LEFT ===== -->
           <section class="panel panel-left">
             <div class="panel-head">
               <div class="panel-title">
@@ -75,6 +78,7 @@
 
               <div class="panel-tools">
                 <button class="btn btn-soft" id="btnQuickAmount" type="button">+ Importe</button>
+
                 <button class="btn btn-soft" id="btnPark" type="button" title="Aparcar / Recuperar">
                   Aparcar <span class="badge badge-mini" id="parkBadge" hidden>0</span>
                 </button>
@@ -85,8 +89,8 @@
               <div class="field-row">
                 <label class="field">
                   <span>Escanear / Barcode</span>
-                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (escucha permanente)" />
-                  <small>El lector añade al instante. Si no existe → alta rápida.</small>
+                  <input id="barcodeInput" inputmode="numeric" autocomplete="off" placeholder="Escanea aquí (o escribe y Enter)" />
+                  <small>Si no existe → te lleva a registrar automáticamente.</small>
                 </label>
 
                 <label class="field">
@@ -96,7 +100,7 @@
                 </label>
               </div>
 
-              <!-- CATEGORÍAS (debajo como pediste) -->
+              <!-- CATEGORÍAS (debajo de barcode y buscar) -->
               <div class="cat-row">
                 <div class="cat-head">
                   <div class="cat-title">Categorías</div>
@@ -130,7 +134,7 @@
             </div>
           </section>
 
-          <!-- DERECHA -->
+          <!-- ===== RIGHT ===== -->
           <section class="panel panel-right">
             <div class="panel-head">
               <div class="panel-title">
@@ -149,7 +153,7 @@
               <div class="ticket-head">
                 <div class="ticket-shop">
                   <div class="ticket-shop-name" id="shopName">MALIK AHMAD NADEEM</div>
-                  <div class="ticket-shop-sub" id="shopSub">CALLE VITORIA 139 · 09007 BURGOS · TLF 632 480 316 · CIF 72374062P</div>
+                  <div class="ticket-shop-sub" id="shopSub">CALLE VITORIA 139 · 09007 BURGOS · TLF 632 480 316 · CIF/DNI 72374062P</div>
                 </div>
                 <div class="ticket-meta">
                   <div><span class="muted">Caja:</span> <span class="mono" id="posBox">CAJA-1</span></div>
@@ -210,7 +214,7 @@
 
                   <div class="mini-row">
                     <button class="btn btn-soft" id="btnNumpadGiven" type="button">Teclado</button>
-                    <div class="muted small">Tip: F4 cobrar · F2 importe</div>
+                    <div class="muted small">F4 cobrar · F2 importe</div>
                   </div>
                 </div>
 
@@ -224,16 +228,19 @@
               </div>
             </div>
           </section>
+
         </div>
       </section>
 
-      <!-- ===== PRODUCTOS ===== -->
+      <!-- =========================================================
+           TAB: PRODUCTOS
+      ========================================================== -->
       <section class="page" data-page="productos">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Productos</h2>
-              <p>Alta (barcode primero) · Categorías · Favoritos</p>
+              <p>Librería profesional · Orden A–Z · Páginas · Backup</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnExportBackup" type="button">Backup JSON</button>
@@ -257,6 +264,36 @@
                 <select id="prodSearchCat"></select>
               </label>
             </div>
+
+            <div class="mini-row" style="margin-top:12px;">
+              <div class="muted small">
+                <span class="mono" id="prodCount">0</span> productos
+              </div>
+
+              <div class="pager">
+                <button class="btn btn-ghost btn-small" id="btnProdPrev" type="button">←</button>
+                <span class="mono" id="prodPageLabel">1/1</span>
+                <button class="btn btn-ghost btn-small" id="btnProdNext" type="button">→</button>
+
+                <label class="field-inline">
+                  <span>Tamaño</span>
+                  <select id="prodPageSize">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+
+                <label class="field-inline">
+                  <span>Orden</span>
+                  <select id="prodSort">
+                    <option value="az" selected>A–Z</option>
+                    <option value="za">Z–A</option>
+                  </select>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div class="table card" id="productsTable">
@@ -266,6 +303,8 @@
               <div class="tcell">Categoría</div>
               <div class="tcell tcell-right">PVP</div>
               <div class="tcell tcell-right">Compra</div>
+              <div class="tcell tcell-right">Benef/ud</div>
+              <div class="tcell tcell-right">Margen</div>
               <div class="tcell tcell-center">Fav</div>
               <div class="tcell tcell-right">Acciones</div>
             </div>
@@ -275,13 +314,15 @@
         </div>
       </section>
 
-      <!-- ===== REPORTES / Z ===== -->
+      <!-- =========================================================
+           TAB: REPORTES / Z
+      ========================================================== -->
       <section class="page" data-page="reportes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Ventas / Reportes</h2>
-              <p>Resumen del periodo abierto + Historial de Cierres Z</p>
+              <p>Periodo abierto + Historial Z</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-soft" id="btnPrintX" type="button">Imprimir X</button>
@@ -293,25 +334,15 @@
             <div class="card">
               <h3>Periodo abierto</h3>
               <div class="stat-grid">
-                <div class="stat">
-                  <div class="stat-label">Tickets</div>
-                  <div class="stat-value mono" id="statTickets">0</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-label">Total</div>
-                  <div class="stat-value mono" id="statTotal">0,00 €</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-label">Efectivo</div>
-                  <div class="stat-value mono" id="statCash">0,00 €</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-label">Tarjeta</div>
-                  <div class="stat-value mono" id="statCard">0,00 €</div>
-                </div>
+                <div class="stat"><div class="stat-label">Tickets</div><div class="stat-value mono" id="statTickets">0</div></div>
+                <div class="stat"><div class="stat-label">Total</div><div class="stat-value mono" id="statTotal">0,00 €</div></div>
+                <div class="stat"><div class="stat-label">Efectivo</div><div class="stat-value mono" id="statCash">0,00 €</div></div>
+                <div class="stat"><div class="stat-label">Tarjeta</div><div class="stat-value mono" id="statCard">0,00 €</div></div>
+                <div class="stat"><div class="stat-label">Coste</div><div class="stat-value mono" id="statCost">0,00 €</div></div>
+                <div class="stat"><div class="stat-label">Beneficio</div><div class="stat-value mono" id="statProfit">0,00 €</div></div>
               </div>
               <div class="muted small" style="margin-top:10px;">
-                X = informe sin limpiar · Z = imprime y pone a 0 (guarda solo totales en Historial Z).
+                Margen: <span class="mono" id="statMargin">0,0 %</span> · X = informe sin limpiar · Z = imprime y pone a 0
               </div>
             </div>
 
@@ -334,13 +365,15 @@
         </div>
       </section>
 
-      <!-- ===== AJUSTES ===== -->
+      <!-- =========================================================
+           TAB: AJUSTES
+      ========================================================== -->
       <section class="page" data-page="ajustes">
         <div class="page-wrap">
           <div class="page-head">
             <div>
               <h2>Ajustes</h2>
-              <p>Admin PIN · Kiosko · Ticket 80mm · Backup</p>
+              <p>Admin PIN · Kiosko · Backup · Z</p>
             </div>
             <div class="page-actions">
               <button class="btn btn-admin" id="btnAdminUnlock" type="button">Desbloquear Admin</button>
@@ -351,24 +384,12 @@
             <div class="card">
               <h3>Negocio</h3>
               <div class="field-row">
-                <label class="field">
-                  <span>Nombre</span>
-                  <input id="setShopName" />
-                </label>
-                <label class="field">
-                  <span>Subtítulo</span>
-                  <input id="setShopSub" />
-                </label>
+                <label class="field"><span>Nombre</span><input id="setShopName" /></label>
+                <label class="field"><span>Subtítulo</span><input id="setShopSub" /></label>
               </div>
               <div class="field-row">
-                <label class="field">
-                  <span>Caja</span>
-                  <input id="setBoxName" />
-                </label>
-                <label class="field">
-                  <span>Pie ticket</span>
-                  <input id="setFooterText" />
-                </label>
+                <label class="field"><span>Caja</span><input id="setBoxName" /></label>
+                <label class="field"><span>Pie ticket</span><input id="setFooterText" /></label>
               </div>
             </div>
 
@@ -385,7 +406,7 @@
                 <label class="field">
                   <span>Escaneo “agresivo”</span>
                   <select id="setAggressiveScan">
-                    <option value="1">Sí (recomendado)</option>
+                    <option value="1">Sí</option>
                     <option value="0">No</option>
                   </select>
                 </label>
@@ -393,19 +414,33 @@
 
               <div class="field-row">
                 <label class="field">
+                  <span>Auto-backup antes de Z</span>
+                  <select id="setAutoBackupZ">
+                    <option value="1">Sí (recomendado)</option>
+                    <option value="0">No</option>
+                  </select>
+                </label>
+                <label class="field">
                   <span>Modo Kiosko</span>
                   <select id="setKiosk">
                     <option value="0">Off</option>
                     <option value="1">On</option>
                   </select>
-                  <small>En On: intenta fullscreen y bloquea navegación rápida.</small>
+                  <small>En On: intenta fullscreen y bloquea navegación.</small>
                 </label>
+              </div>
+
+              <div class="field-row">
                 <label class="field">
                   <span>Acciones</span>
                   <div class="btn-row">
                     <button class="btn btn-soft" id="btnEnterKiosk" type="button">Entrar Kiosko</button>
                     <button class="btn btn-soft" id="btnExitKiosk2" type="button">Salir Kiosko</button>
                   </div>
+                </label>
+                <label class="field">
+                  <span>—</span>
+                  <input disabled value="Consejo: auto-backup ON + Z diario" />
                 </label>
               </div>
 
@@ -425,7 +460,7 @@
                 <small>Por defecto: 1234</small>
               </label>
               <label class="field">
-                <span>Bloqueo por tiempo</span>
+                <span>Bloqueo admin</span>
                 <select id="setAdminMinutes">
                   <option value="3">3 min</option>
                   <option value="5" selected>5 min</option>
@@ -445,7 +480,7 @@
               <label class="field">
                 <span>Reset total</span>
                 <button class="btn btn-danger" id="btnFactoryReset" type="button">Borrar todo</button>
-                <small>⚠️ Esto borra productos, categorías, ventas y Z.</small>
+                <small>⚠️ Borra productos, ventas y Z.</small>
               </label>
             </div>
           </div>
@@ -453,7 +488,7 @@
           <div class="card">
             <h3>About</h3>
             <div class="muted small">
-              TPV NADEEM — B/W PRO · Opción 1 (Local) · vPRO1<br/>
+              TPV NADEEM — B/W PRO · Local · vPRO2<br/>
               <span class="mono">Made by Arslan Waris · All rights reserved</span>
             </div>
           </div>
@@ -462,18 +497,17 @@
 
     </main>
 
+    <!-- ===== FOOTER ===== -->
     <footer class="footer">
       <div class="footer-left">
         <span class="badge badge-ok">Local</span>
         <span class="muted">GitHub Pages · LocalStorage</span>
       </div>
-      <div class="footer-right muted">
-        <span class="mono" id="version">vPRO1</span>
-      </div>
+      <div class="footer-right muted"><span class="mono" id="version">vPRO2</span></div>
     </footer>
   </div>
 
-  <!-- PRINT AREA (80mm) -->
+  <!-- PRINT AREA 80MM -->
   <div id="printArea" class="print-area" aria-hidden="true"></div>
 
   <!-- TOAST -->
@@ -482,7 +516,9 @@
   <!-- BACKDROP -->
   <div class="modal-backdrop" id="backdrop" hidden></div>
 
-  <!-- ===== MODALS ===== -->
+  <!-- =========================================================
+       MODALS (COMPLETOS)
+  ========================================================== -->
 
   <!-- LOGIN -->
   <dialog class="modal" id="modalLogin" aria-label="Login">
@@ -561,10 +597,10 @@
 
       <div class="numpad" id="numpadQuick" data-target="quickAmount">
         <div class="numpad-grid">
-          <button class="np" data-k="7">7</button><button class="np" data-k="8">8</button><button class="np" data-k="9">9</button><button class="np np-fn" data-k="back">⌫</button>
-          <button class="np" data-k="4">4</button><button class="np" data-k="5">5</button><button class="np" data-k="6">6</button><button class="np np-fn" data-k="clear">C</button>
-          <button class="np" data-k="1">1</button><button class="np" data-k="2">2</button><button class="np" data-k="3">3</button><button class="np np-ok" data-k="ok">OK</button>
-          <button class="np np-wide" data-k="0">0</button><button class="np" data-k=",">,</button><button class="np np-fn" data-k="plus10">+10</button>
+          <button class="np" data-k="7" type="button">7</button><button class="np" data-k="8" type="button">8</button><button class="np" data-k="9" type="button">9</button><button class="np np-fn" data-k="back" type="button">⌫</button>
+          <button class="np" data-k="4" type="button">4</button><button class="np" data-k="5" type="button">5</button><button class="np" data-k="6" type="button">6</button><button class="np np-fn" data-k="clear" type="button">C</button>
+          <button class="np" data-k="1" type="button">1</button><button class="np" data-k="2" type="button">2</button><button class="np" data-k="3" type="button">3</button><button class="np np-ok" data-k="ok" type="button">OK</button>
+          <button class="np np-wide" data-k="0" type="button">0</button><button class="np" data-k="," type="button">,</button><button class="np np-fn" data-k="plus10" type="button">+10</button>
         </div>
       </div>
     </div>
@@ -575,7 +611,7 @@
     </div>
   </dialog>
 
-  <!-- COBRO (con numpad para entregado y mixto) -->
+  <!-- COBRO + NUMPAD -->
   <dialog class="modal modal-wide" id="modalPay" aria-label="Cobro">
     <div class="modal-head">
       <div>
@@ -601,10 +637,12 @@
               <option value="mixto">Mixto</option>
             </select>
           </label>
+
           <label class="field" id="payGivenWrap">
             <span>Entregado</span>
             <input id="payGiven" inputmode="decimal" placeholder="0,00" />
           </label>
+
           <label class="field" id="payChangeWrap">
             <span>Cambio</span>
             <input id="payChange" disabled placeholder="0,00" />
@@ -627,15 +665,15 @@
           <input id="payNote" placeholder="Cliente / nota…" />
         </label>
 
-        <div class="muted small">OK = confirmar venta · imprime si está activado</div>
+        <div class="muted small">OK = confirmar venta</div>
       </div>
 
       <div class="numpad" id="numpadPay" data-target="payGiven">
         <div class="numpad-grid">
-          <button class="np" data-k="7">7</button><button class="np" data-k="8">8</button><button class="np" data-k="9">9</button><button class="np np-fn" data-k="back">⌫</button>
-          <button class="np" data-k="4">4</button><button class="np" data-k="5">5</button><button class="np" data-k="6">6</button><button class="np np-fn" data-k="clear">C</button>
-          <button class="np" data-k="1">1</button><button class="np" data-k="2">2</button><button class="np" data-k="3">3</button><button class="np np-ok" data-k="ok">OK</button>
-          <button class="np np-wide" data-k="0">0</button><button class="np" data-k=",">,</button><button class="np np-fn" data-k="full">TOTAL</button>
+          <button class="np" data-k="7" type="button">7</button><button class="np" data-k="8" type="button">8</button><button class="np" data-k="9" type="button">9</button><button class="np np-fn" data-k="back" type="button">⌫</button>
+          <button class="np" data-k="4" type="button">4</button><button class="np" data-k="5" type="button">5</button><button class="np" data-k="6" type="button">6</button><button class="np np-fn" data-k="clear" type="button">C</button>
+          <button class="np" data-k="1" type="button">1</button><button class="np" data-k="2" type="button">2</button><button class="np" data-k="3" type="button">3</button><button class="np np-ok" data-k="ok" type="button">OK</button>
+          <button class="np np-wide" data-k="0" type="button">0</button><button class="np" data-k="," type="button">,</button><button class="np np-fn" data-k="full" type="button">TOTAL</button>
         </div>
       </div>
     </div>
@@ -727,7 +765,7 @@
     </div>
   </dialog>
 
-  <!-- CATEGORÍA (crear/renombrar) -->
+  <!-- CATEGORÍA -->
   <dialog class="modal" id="modalCategory" aria-label="Categorías">
     <div class="modal-head">
       <div>
@@ -739,7 +777,7 @@
 
     <div class="modal-body">
       <label class="field">
-        <span id="catFieldLabel">Nombre</span>
+        <span>Nombre</span>
         <input id="catName" placeholder="Ej: Bebidas" />
       </label>
       <div class="hint">
@@ -778,6 +816,6 @@
     </div>
   </dialog>
 
-  <script src="./app.js?v=PRO1" defer></script>
+  <script src="./app.js?v=PRO2" defer></script>
 </body>
 </html>
