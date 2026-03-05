@@ -1,28 +1,17 @@
 /* =========================
-TPV NADEEM — B/W PRO (vPRO3)
+TPV NADEEM — B/W PRO (vPRO2)
 Archivo: app.js  (COMPLETO)
-
-INCLUYE (lo que pediste):
-✅ (2) Cierre Z con ARQUEO: efectivo contado + descuadre (impreso y guardado)
-✅ (3) Usuarios con PIN individual (login usuario+PIN) + cambiar PIN en Ajustes (Admin)
-✅ (4) Permisos por acción (borrar línea, anular ticket, descuento, editar precio por línea)
-✅ (8) Import/Export CSV de catálogo (barcode,name,category,price,cost,fav) + JSON backup
-✅ Ticket 80mm más PRO (recuadros + negritas + totales destacados)
-✅ Doble pitido si el lector manda el MISMO barcode 2 veces seguidas (anti-duplicado + aviso)
-    - 1 pitido = scan válido añadido
-    - 2 pitidos = scan duplicado (mismo code en ventana corta) => NO añade, solo avisa
-
-Mantiene todo lo anterior:
-- Escaneo permanente global + manual en input
+- Escaneo permanente (global) + manual en input
 - Anti-duplicado de escaneo
-- Registrar automático si no existe (Admin)
-- Categorías: crear/renombrar/asignar
-- Librería productos: A–Z, paginación, filtros
-- Beneficio: coste/benef/margen en reportes + tabla productos
-- Historial Z + reimpresión
-- Modo Kiosko + salir con Admin
-- Ticket email (mailto)
-- Aparcar/recuperar carritos
+- Si no existe: registrar automático (PIN -> modal producto)
+- Categorías: crear / renombrar / asignar a producto
+- Productos: librería PRO (A–Z, paginación, tamaño, filtros)
+- Beneficios: reportes (coste, beneficio, margen) + tabla productos (benef/ud, margen)
+- Backup JSON export/import + auto-backup antes de Cierre Z (opcional)
+- Cierre Z: imprime reporte, guarda historial Z, pone a 0 al terminar impresión
+- Historial Z: reimpresión
+- Modo Kiosko: fullscreen + ocultar tabs + salir requiere Admin
+- Ticket 80mm + Email (mailto)
 ========================= */
 
 (() => {
@@ -34,10 +23,10 @@ Mantiene todo lo anterior:
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-  // Mantener key estable para no perder datos al actualizar
   const LS_KEY = 'TPV_NADEEM_BWPRO_VPRO2';
 
   const pad = (n) => (n < 10 ? '0' : '') + n;
+
   const now = () => new Date();
   const nowEs = () => {
     const d = now();
@@ -50,6 +39,7 @@ Mantiene todo lo anterior:
     const v = Number(t);
     return Number.isFinite(v) ? v : 0;
   };
+
   const fmtMoney = (v) => Number(v || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtEUR = (v) => `${fmtMoney(v)} €`;
 
@@ -68,59 +58,11 @@ Mantiene todo lo anterior:
 
   const debounce = (fn, ms = 150) => {
     let t = null;
-    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
   };
-
-  /* =========================
-     BEEP (WebAudio)
-  ========================== */
-  const beep = (() => {
-    let ctx = null;
-    let unlocked = false;
-
-    function ensureCtx() {
-      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
-      return ctx;
-    }
-
-    async function unlock() {
-      try {
-        const c = ensureCtx();
-        if (c.state !== 'running') await c.resume();
-        unlocked = true;
-      } catch {
-        // ignore
-      }
-    }
-
-    function tone(durationMs = 70, freq = 880, gainVal = 0.06) {
-      if (!unlocked) return;
-      const c = ensureCtx();
-      const o = c.createOscillator();
-      const g = c.createGain();
-      o.type = 'sine';
-      o.frequency.value = freq;
-      g.gain.value = gainVal;
-      o.connect(g);
-      g.connect(c.destination);
-      o.start();
-      setTimeout(() => { try { o.stop(); } catch {} }, durationMs);
-    }
-
-    function single() {
-      tone(65, 880, 0.06);
-    }
-    function dbl() {
-      tone(55, 880, 0.06);
-      setTimeout(() => tone(55, 880, 0.06), 95);
-    }
-
-    // unlock on first user gesture
-    document.addEventListener('click', unlock, { once: true, capture: true });
-    document.addEventListener('keydown', unlock, { once: true, capture: true });
-
-    return { single, dbl, unlock };
-  })();
 
   /* =========================
      STATE
@@ -136,69 +78,51 @@ Mantiene todo lo anterior:
   ]);
 
   const defaultState = () => ({
-    version: 'vPRO3',
-
+    version: 'vPRO2',
     settings: {
       shopName: 'MALIK AHMAD NADEEM',
       shopSub: 'CALLE VITORIA 139 · 09007 BURGOS · TLF 632 480 316 · CIF/DNI 72374062P',
       footerText: 'Gracias por su compra',
       boxName: 'CAJA-1',
       theme: 'day',
-
       autoPrint: false,
       aggressiveScan: true,
       kiosk: false,
-
       adminMinutes: 5,
       autoBackupZ: true,
-
-      // Permisos por acción
-      permDeleteLine: false,
-      permVoid: false,
-      permDiscount: true,
-      permPriceEdit: true,
-
-      // Admin PIN (se sincroniza con usuario "admin")
-      adminPinHash: ''
+      adminPinHash: '', // default hash('1234')
     },
-
     session: {
       user: { name: 'CAJERO', role: 'cashier' },
       adminUntil: 0
     },
-
-    // Usuarios (PIN individual en passHash)
     users: [
       { username: 'cajero', passHash: '', role: 'cashier' },
-      { username: 'admin',  passHash: '', role: 'admin' }
+      { username: 'admin',  passHash: '', role: 'admin' },
     ],
-
     categories: ['Favoritos', 'Fruta', 'Verdura', 'Tropical', 'Otros'],
     selectedCategory: 'Favoritos',
-
-    counters: { ticketSeq: 1, zSeq: 1 },
-
+    counters: {
+      ticketSeq: 1,
+      zSeq: 1
+    },
     products: seedProducts(),
-
     cart: {
       lines: [],
       note: '',
       payMethod: 'efectivo',
-      given: 0,
-      discount: { type: 'amount', value: 0 } // vPRO3: descuento por ticket
+      given: 0
     },
-
-    parked: [],
-
-    salesOpen: [],   // periodo abierto
-    lastSale: null,
-
-    zHistory: [],    // cierres Z
-
-    ui: { prodPage: 1, prodPageSize: 50, prodSort: 'az' },
-
-    pendingRegisterBarcode: null,
-    pendingAction: null // {type, payload}
+    parked: [],      // [{id,name,ts,cart}]
+    salesOpen: [],   // periodo abierto (Z lo pone a 0)
+    lastSale: null,  // último ticket del periodo abierto
+    zHistory: [],    // cierres Z (solo totales)
+    ui: {
+      prodPage: 1,
+      prodPageSize: 50,
+      prodSort: 'az'
+    },
+    pendingRegisterBarcode: null
   });
 
   const deepMerge = (base, patch) => {
@@ -219,9 +143,6 @@ Mantiene todo lo anterior:
       if (!merged.categories || !merged.categories.length) merged.categories = ['Favoritos', 'Otros'];
       if (!merged.categories.includes('Favoritos')) merged.categories.unshift('Favoritos');
       if (!merged.selectedCategory || !merged.categories.includes(merged.selectedCategory)) merged.selectedCategory = 'Favoritos';
-      if (!merged.cart) merged.cart = defaultState().cart;
-      if (!merged.cart.discount) merged.cart.discount = { type: 'amount', value: 0 };
-      if (!merged.settings) merged.settings = defaultState().settings;
       return merged;
     } catch {
       return defaultState();
@@ -232,6 +153,7 @@ Mantiene todo lo anterior:
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch (e) {
+      // Si se llena LocalStorage (muy raro), avisamos para que haga backup
       toast('⚠️ Almacenamiento lleno. Haz Backup JSON.');
       console.warn(e);
     }
@@ -295,9 +217,6 @@ Mantiene todo lo anterior:
     btnPrint: $('#btnPrint'),
     btnEmailTicket: $('#btnEmailTicket'),
     btnLastTicket: $('#btnLastTicket'),
-    btnDiscount: $('#btnDiscount'),
-    discountRow: $('#discountRow'),
-    discountValue: $('#discountValue'),
 
     // reportes
     statTickets: $('#statTickets'),
@@ -312,7 +231,7 @@ Mantiene todo lo anterior:
     btnCloseZ: $('#btnCloseZ'),
     zList: $('#zList'),
 
-    // productos
+    // productos page + pager
     productsTable: $('#productsTable'),
     prodSearchName: $('#prodSearchName'),
     prodSearchBarcode: $('#prodSearchBarcode'),
@@ -326,10 +245,7 @@ Mantiene todo lo anterior:
     btnAddProduct: $('#btnAddProduct'),
     btnExportBackup: $('#btnExportBackup'),
     btnImportBackup: $('#btnImportBackup'),
-    btnExportCSV: $('#btnExportCSV'),
-    btnImportCSV: $('#btnImportCSV'),
     fileImport: $('#fileImport'),
-    fileImportCSV: $('#fileImportCSV'),
 
     // ajustes
     btnAdminUnlock: $('#btnAdminUnlock'),
@@ -347,17 +263,6 @@ Mantiene todo lo anterior:
     btnRestoreNow: $('#btnRestoreNow'),
     btnFactoryReset: $('#btnFactoryReset'),
 
-    // permisos
-    setPermDeleteLine: $('#setPermDeleteLine'),
-    setPermVoid: $('#setPermVoid'),
-    setPermDiscount: $('#setPermDiscount'),
-    setPermPriceEdit: $('#setPermPriceEdit'),
-
-    // users pins
-    setUserSelect: $('#setUserSelect'),
-    setUserPin: $('#setUserPin'),
-    btnUserPinSave: $('#btnUserPinSave'),
-
     // print + toast + backdrop
     printArea: $('#printArea'),
     toastHost: $('#toastHost'),
@@ -372,7 +277,6 @@ Mantiene todo lo anterior:
     modalEmail: $('#modalEmail'),
     modalCategory: $('#modalCategory'),
     modalZ: $('#modalZ'),
-    modalDiscount: $('#modalDiscount'),
 
     // close buttons
     closeBtns: $$('[data-close]'),
@@ -385,11 +289,6 @@ Mantiene todo lo anterior:
     // admin modal
     adminPin: $('#adminPin'),
     btnAdminOk: $('#btnAdminOk'),
-
-    // discount modal
-    discountType: $('#discountType'),
-    discountInput: $('#discountInput'),
-    btnDiscountOk: $('#btnDiscountOk'),
 
     // quick modal
     quickAmount: $('#quickAmount'),
@@ -431,10 +330,8 @@ Mantiene todo lo anterior:
     catName: $('#catName'),
     btnCategoryOk: $('#btnCategoryOk'),
 
-    // Z modal (arqueo)
+    // Z modal
     zPreview: $('#zPreview'),
-    zCountedCash: $('#zCountedCash'),
-    zDiffCash: $('#zDiffCash'),
     btnZOk: $('#btnZOk'),
   };
 
@@ -476,6 +373,7 @@ Mantiene todo lo anterior:
     if (!el.barcodeInput) return;
     if (anyModalOpen()) return;
     if (!(el.pageVenta && el.pageVenta.classList.contains('is-active'))) return;
+    // no robar foco si usuario está escribiendo en búsqueda
     const a = document.activeElement;
     if (a === el.searchInput) return;
     setTimeout(() => el.barcodeInput.focus(), 25);
@@ -504,59 +402,18 @@ Mantiene todo lo anterior:
   }
 
   /* =========================
-     SECURITY (USERS + ADMIN)
+     SECURITY (LOGIN + ADMIN PIN)
   ========================== */
-  function getUser(username) {
-    const u = String(username || '').trim().toLowerCase();
-    return state.users.find(x => x.username === u) || null;
-  }
-
   async function ensureDefaultHashes() {
-    const hDefault = await sha256Hex('1234');
-
-    // user pins
+    if (!state.settings.adminPinHash) state.settings.adminPinHash = await sha256Hex('1234');
     for (const u of state.users) {
-      if (!u.passHash) u.passHash = hDefault;
+      if (!u.passHash) u.passHash = await sha256Hex('1234');
     }
-
-    // admin pin sync with admin user
-    const adminUser = getUser('admin');
-    if (!state.settings.adminPinHash && adminUser?.passHash) {
-      state.settings.adminPinHash = adminUser.passHash;
-    }
-    if (state.settings.adminPinHash && adminUser && adminUser.passHash !== state.settings.adminPinHash) {
-      adminUser.passHash = state.settings.adminPinHash; // keep unified
-    }
-    if (!state.settings.adminPinHash) state.settings.adminPinHash = hDefault;
-
     save();
   }
 
   function adminUnlocked() {
     return (state.session.adminUntil || 0) > Date.now();
-  }
-
-  function setAdminUnlocked(minutes = null) {
-    const mins = minutes == null ? Number(state.settings.adminMinutes || 5) : Number(minutes);
-    state.session.adminUntil = Date.now() + mins * 60 * 1000;
-    save();
-    renderAdminState();
-
-    // auto-run pending action
-    if (state.pendingAction) {
-      const p = state.pendingAction;
-      state.pendingAction = null;
-      save();
-      try { runPendingAction(p); } catch (e) { console.warn(e); }
-    }
-
-    // registrar pendiente por barcode
-    if (state.pendingRegisterBarcode) {
-      const code = state.pendingRegisterBarcode;
-      state.pendingRegisterBarcode = null;
-      save();
-      openProductModal(null, code);
-    }
   }
 
   function renderAdminState() {
@@ -567,52 +424,41 @@ Mantiene todo lo anterior:
     if (el.btnAddProductInline) el.btnAddProductInline.disabled = !on;
   }
 
+  function setAdminUnlocked(minutes = null) {
+    const mins = minutes == null ? Number(state.settings.adminMinutes || 5) : Number(minutes);
+    state.session.adminUntil = Date.now() + mins * 60 * 1000;
+    save();
+    renderAdminState();
+
+    // Si había un barcode pendiente para registrar, abrir modal producto ahora
+    if (state.pendingRegisterBarcode) {
+      const code = state.pendingRegisterBarcode;
+      state.pendingRegisterBarcode = null;
+      save();
+      openProductModal(null, code);
+    }
+  }
+
   async function verifyAdminPin(pin) {
     const h = await sha256Hex(String(pin || '').trim());
     return h === state.settings.adminPinHash;
   }
 
-  async function login(username, pin) {
+  async function login(username, password) {
     const u = String(username || '').trim().toLowerCase();
-    const p = String(pin || '');
+    const p = String(password || '');
     if (!u || !p) return { ok: false, msg: 'Credenciales vacías' };
 
-    const user = getUser(u);
+    const user = state.users.find(x => x.username === u);
     if (!user) return { ok: false, msg: 'Usuario no existe' };
 
     const h = await sha256Hex(p);
-    if (h !== user.passHash) return { ok: false, msg: 'PIN incorrecto' };
+    if (h !== user.passHash) return { ok: false, msg: 'Contraseña incorrecta' };
 
     state.session.user = { name: u.toUpperCase(), role: user.role };
     save();
     renderHeader();
-
-    // Si entra como admin -> desbloquea admin directamente por tiempo
-    if (user.role === 'admin') setAdminUnlocked(state.settings.adminMinutes || 5);
-
     return { ok: true };
-  }
-
-  function requireAdminIf(flag, actionType, payload, message) {
-    if (!flag) return true;
-    if (adminUnlocked()) return true;
-    state.pendingAction = { type: actionType, payload };
-    save();
-    openModal(el.modalAdmin);
-    toast(message || 'PIN admin requerido');
-    return false;
-  }
-
-  function runPendingAction(p) {
-    if (!p || !p.type) return;
-    const type = p.type;
-    const payload = p.payload || {};
-
-    if (type === 'DELETE_LINE') cartRemove(payload.idx);
-    if (type === 'VOID_TICKET') cartClear();
-    if (type === 'APPLY_DISCOUNT') applyDiscount(payload.type, payload.value);
-    if (type === 'EDIT_LINE_PRICE') doEditLinePrice(payload.idx);
-    if (type === 'SAVE_USER_PIN') doSaveUserPin(payload.username, payload.newPin);
   }
 
   /* =========================
@@ -630,7 +476,9 @@ Mantiene todo lo anterior:
     save();
     applyKioskUI();
     try {
-      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
       toast('Kiosko ON');
     } catch {
       toast('Kiosko ON (fullscreen bloqueado)');
@@ -647,7 +495,9 @@ Mantiene todo lo anterior:
     state.settings.kiosk = false;
     save();
     applyKioskUI();
-    try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {}
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch {}
     toast('Kiosko OFF');
     focusBarcodeSoon();
   }
@@ -661,7 +511,7 @@ Mantiene todo lo anterior:
   function addCategory(name) {
     const n = normalizeCat(name);
     if (!n) return { ok: false, msg: 'Nombre vacío' };
-    if (n.toLowerCase() === 'favoritos') return { ok: false, msg: '“Favoritos” reservado' };
+    if (n.toLowerCase() === 'favoritos') return { ok: false, msg: '“Favoritos” está reservado' };
     if (catExists(n)) return { ok: false, msg: 'Ya existe' };
     state.categories.push(n);
     save();
@@ -673,6 +523,7 @@ Mantiene todo lo anterior:
     const newN = normalizeCat(newName);
     if (!newN) return { ok: false, msg: 'Nuevo nombre vacío' };
     if (oldN.toLowerCase() === 'favoritos') return { ok: false, msg: 'No se renombra “Favoritos”' };
+    if (newN.toLowerCase() === 'favoritos') return { ok: false, msg: 'Nombre no permitido' };
     if (catExists(newN)) return { ok: false, msg: 'Ya existe ese nombre' };
 
     state.categories = state.categories.map(c => (c === oldN ? newN : c));
@@ -686,6 +537,7 @@ Mantiene todo lo anterior:
     if (!el.catsBar) return;
     el.catsBar.innerHTML = '';
 
+    // Asegurar Favoritos al inicio
     if (!state.categories.includes('Favoritos')) state.categories.unshift('Favoritos');
 
     const cats = state.categories.slice();
@@ -719,6 +571,7 @@ Mantiene todo lo anterior:
       opt.textContent = 'Todas';
       selectEl.appendChild(opt);
     }
+
     for (const c of cats) {
       const opt = document.createElement('option');
       opt.value = c;
@@ -745,10 +598,15 @@ Mantiene todo lo anterior:
   function filteredProductsForGrid() {
     const q = String(el.searchInput?.value || '').trim().toLowerCase();
     let items = state.products.filter(productMatchesCategory);
-    if (q) items = items.filter(p =>
-      (p.name || '').toLowerCase().includes(q) ||
-      String(p.barcode || '').includes(q)
-    );
+
+    if (q) {
+      items = items.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        String(p.barcode || '').includes(q)
+      );
+    }
+
+    // Orden A-Z (grid)
     items.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
     return items.slice(0, 120);
   }
@@ -771,6 +629,7 @@ Mantiene todo lo anterior:
     if (!el.prodGrid) return;
     el.prodGrid.innerHTML = '';
 
+    // Tile fijo: importe rápido
     el.prodGrid.appendChild(makeProdBtn('Importe rápido', 'Manual', 'Teclado', 'F2', () => openQuickModal()));
 
     const items = filteredProductsForGrid();
@@ -780,7 +639,7 @@ Mantiene todo lo anterior:
         fmtEUR(p.price || 0),
         p.barcode ? `BC: ${p.barcode}` : 'Manual',
         p.fav ? '★' : '',
-        () => cartAddProduct(p, 1, 'scan')
+        () => cartAddProduct(p, 1)
       ));
     }
   }
@@ -794,6 +653,7 @@ Mantiene todo lo anterior:
       return;
     }
 
+    // Modo edit o new
     el.modalProduct.dataset.editId = product?.id || '';
     if (el.prodModalTitle) el.prodModalTitle.textContent = product ? 'Editar producto' : 'Nuevo producto';
 
@@ -807,7 +667,7 @@ Mantiene todo lo anterior:
     el.prodCost.value  = product && product.cost != null ? fmtMoney(product.cost).replace('.', ',') : '';
 
     openModal(el.modalProduct);
-    setTimeout(() => el.prodName?.focus(), 60);
+    setTimeout(() => (product ? el.prodName : el.prodName)?.focus(), 60);
   }
 
   function saveProductFromModal() {
@@ -839,7 +699,15 @@ Mantiene todo lo anterior:
       p.price = price;
       p.cost = cost;
     } else {
-      state.products.push({ id: 'P-' + uid(), barcode, name, category, fav, price, cost });
+      state.products.push({
+        id: 'P-' + uid(),
+        barcode,
+        name,
+        category,
+        fav,
+        price,
+        cost
+      });
     }
 
     save();
@@ -851,27 +719,14 @@ Mantiene todo lo anterior:
   }
 
   /* =========================
-     CART + DISCOUNT
+     CART
   ========================== */
-  function calcDiscountAmount(subtotal) {
-    const d = state.cart.discount || { type: 'amount', value: 0 };
-    const val = Number(d.value || 0);
-    let amt = 0;
-    if (d.type === 'percent') amt = subtotal * (val / 100);
-    else amt = val;
-    if (!Number.isFinite(amt)) amt = 0;
-    amt = Math.max(0, Math.min(subtotal, amt));
-    return amt;
-  }
-
   function cartTotals() {
     const subtotal = state.cart.lines.reduce((s, l) => s + (Number(l.price) * Number(l.qty || 0)), 0);
-    const discAmt = calcDiscountAmount(subtotal);
-    const total = Math.max(0, subtotal - discAmt);
-    return { subtotal, discount: discAmt, total };
+    return { subtotal, total: subtotal };
   }
 
-  function cartAddProduct(p, qty = 1, src = '') {
+  function cartAddProduct(p, qty = 1) {
     const key = p.id || p.barcode || p.name;
     const idx = state.cart.lines.findIndex(l => l.key === key && !l.isManual);
     if (idx >= 0) state.cart.lines[idx].qty += qty;
@@ -883,14 +738,12 @@ Mantiene todo lo anterior:
         name: p.name,
         price: Number(p.price || 0),
         cost: p.cost == null ? null : Number(p.cost),
-        qty,
+        qty: qty,
         isManual: false
       });
     }
     save();
     renderTicket();
-
-    if (src === 'scan') beep.single();
   }
 
   function cartAddManual(amount, name) {
@@ -931,22 +784,14 @@ Mantiene todo lo anterior:
   }
 
   function cartClear() {
-    state.cart = { lines: [], note: '', payMethod: 'efectivo', given: 0, discount: { type: 'amount', value: 0 } };
+    state.cart = { lines: [], note: '', payMethod: 'efectivo', given: 0 };
     save();
     renderTicket();
     focusBarcodeSoon();
   }
 
-  function applyDiscount(type, value) {
-    const v = parseMoney(value);
-    state.cart.discount = { type, value: v };
-    save();
-    renderTicket();
-    toast('Descuento aplicado');
-  }
-
   /* =========================
-     TICKET RENDER + PRICE EDIT
+     TICKET RENDER
   ========================== */
   function renderHeader() {
     setTheme(state.settings.theme || 'day');
@@ -972,38 +817,15 @@ Mantiene todo lo anterior:
     if (state.parked.length) {
       el.parkBadge.hidden = false;
       el.parkBadge.textContent = String(state.parked.length);
-    } else el.parkBadge.hidden = true;
-  }
-
-  function doEditLinePrice(idx) {
-    const l = state.cart.lines[idx];
-    if (!l) return;
-    const cur = fmtMoney(l.price).replace('.', ',');
-    const nv = prompt(`Nuevo PVP para "${l.name}"`, cur);
-    if (nv == null) return;
-    const p = parseMoney(nv);
-    if (!(p >= 0)) return toast('Precio inválido');
-    l.price = p;
-    save();
-    renderTicket();
-    toast('Precio actualizado');
-  }
-
-  function requestEditLinePrice(idx) {
-    const need = !!state.settings.permPriceEdit;
-    if (!requireAdminIf(need, 'EDIT_LINE_PRICE', { idx }, 'PIN admin requerido para editar precio')) return;
-    doEditLinePrice(idx);
-  }
-
-  function requestDeleteLine(idx) {
-    const need = !!state.settings.permDeleteLine;
-    if (!requireAdminIf(need, 'DELETE_LINE', { idx }, 'PIN admin requerido para borrar línea')) return;
-    cartRemove(idx);
+    } else {
+      el.parkBadge.hidden = true;
+    }
   }
 
   function renderTicket() {
     renderHeader();
 
+    // Keep header row
     const thead = el.ticketLines?.querySelector('.trow.thead');
     if (!thead || !el.ticketLines) return;
 
@@ -1027,51 +849,38 @@ Mantiene todo lo anterior:
             <button class="qty-btn" type="button">+</button>
           </div>
         </div>
-        <div class="tcell tcell-right mono price-cell" title="Click para editar precio">${fmtMoney(l.price)}</div>
+        <div class="tcell tcell-right mono">${fmtMoney(l.price)}</div>
         <div class="tcell tcell-right mono">${fmtMoney(l.price * l.qty)}</div>
       `;
 
       const btnMinus = row.querySelectorAll('.qty-btn')[0];
       const btnPlus  = row.querySelectorAll('.qty-btn')[1];
       const qtyIn    = row.querySelector('.qty-in');
-      const priceCell = row.querySelector('.price-cell');
 
       btnMinus.addEventListener('click', () => cartIncQty(idx, -1));
       btnPlus.addEventListener('click',  () => cartIncQty(idx, +1));
 
       qtyIn.addEventListener('change', () => cartSetQty(idx, qtyIn.value));
       qtyIn.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); qtyIn.blur(); focusBarcodeSoon(); }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          qtyIn.blur();
+          focusBarcodeSoon();
+        }
       });
 
-      // Click para editar precio (permiso configurable)
-      priceCell.addEventListener('click', () => requestEditLinePrice(idx));
-
-      // Right-click remove line (permiso configurable)
+      // Right-click to remove line
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        requestDeleteLine(idx);
+        cartRemove(idx);
       });
 
       el.ticketLines.appendChild(row);
     });
 
-    const { subtotal, discount, total } = cartTotals();
-
+    const { total } = cartTotals();
     if (el.linesCount) el.linesCount.textContent = String(state.cart.lines.length);
-    if (el.subTotal) el.subTotal.textContent = fmtEUR(subtotal);
-
-    // descuento visible
-    if (el.discountRow && el.discountValue) {
-      if (discount > 0.0001) {
-        el.discountRow.hidden = false;
-        el.discountValue.textContent = `- ${fmtEUR(discount)}`;
-      } else {
-        el.discountRow.hidden = true;
-        el.discountValue.textContent = `0,00 €`;
-      }
-    }
-
+    if (el.subTotal) el.subTotal.textContent = fmtEUR(total);
     if (el.grandTotal) el.grandTotal.textContent = fmtEUR(total);
 
     const method = state.cart.payMethod || 'efectivo';
@@ -1079,37 +888,10 @@ Mantiene todo lo anterior:
     const change = (method === 'efectivo') ? Math.max(0, given - total) : 0;
     if (el.changeInput) el.changeInput.value = fmtMoney(change);
 
+    // sync note input
     if (el.noteName && el.noteName.value !== state.cart.note) el.noteName.value = state.cart.note || '';
 
     renderReports();
-  }
-
-  /* =========================
-     DISCOUNT MODAL
-  ========================== */
-  function openDiscountModal() {
-    const need = !!state.settings.permDiscount;
-    if (!adminUnlocked() && need) {
-      state.pendingAction = { type: 'APPLY_DISCOUNT', payload: { type: el.discountType?.value || 'amount', value: el.discountInput?.value || '' } };
-      save();
-      openModal(el.modalAdmin);
-      toast('PIN admin requerido para descuento');
-      return;
-    }
-
-    const d = state.cart.discount || { type: 'amount', value: 0 };
-    if (el.discountType) el.discountType.value = d.type || 'amount';
-    if (el.discountInput) el.discountInput.value = d.value ? fmtMoney(d.value).replace('.', ',') : '';
-    openModal(el.modalDiscount);
-  }
-
-  function confirmDiscount() {
-    const type = el.discountType?.value || 'amount';
-    const valRaw = el.discountInput?.value || '0';
-    const need = !!state.settings.permDiscount;
-    if (!requireAdminIf(need, 'APPLY_DISCOUNT', { type, value: valRaw }, 'PIN admin requerido para descuento')) return;
-    applyDiscount(type, valRaw);
-    closeModal(el.modalDiscount);
   }
 
   /* =========================
@@ -1144,10 +926,10 @@ Mantiene todo lo anterior:
     const m = el.payMethod.value;
     const isCash = m === 'efectivo';
     const isCard = m === 'tarjeta';
-    const isMix  = m === 'mixto';
+    const isMix = m === 'mixto';
 
     el.paySplitWrap.hidden = !isMix;
-    el.payGivenWrap.style.display  = (isCash || isMix) ? '' : 'none';
+    el.payGivenWrap.style.display = (isCash || isMix) ? '' : 'none';
     el.payChangeWrap.style.display = (isCash || isMix) ? '' : 'none';
 
     if (isCard) {
@@ -1180,7 +962,7 @@ Mantiene todo lo anterior:
   }
 
   function confirmPay() {
-    const { subtotal, discount, total } = cartTotals();
+    const { total } = cartTotals();
     const method = el.payMethod.value;
     const note = (el.payNote.value || '').trim();
 
@@ -1198,7 +980,7 @@ Mantiene todo lo anterior:
       if ((cashAmount + cardAmount) < total && !confirm('Mixto: suma menor que total. ¿Confirmar igualmente?')) return;
     }
 
-    const sale = saveSale({ payMethod: method, given, cashAmount, cardAmount, note, subtotal, discount, total });
+    const sale = saveSale({ payMethod: method, given, cashAmount, cardAmount, note });
     if (!sale) return toast('Error al guardar venta');
 
     closeModal(el.modalPay);
@@ -1220,7 +1002,8 @@ Mantiene todo lo anterior:
     return `T-${String(n).padStart(6, '0')}`;
   }
 
-  function saveSale({ payMethod, given, cashAmount, cardAmount, note, subtotal, discount, total }) {
+  function saveSale({ payMethod, given, cashAmount, cardAmount, note }) {
+    const { total } = cartTotals();
     if (!(total > 0)) return null;
 
     const sale = {
@@ -1229,18 +1012,12 @@ Mantiene todo lo anterior:
       date: nowEs(),
       box: state.settings.boxName,
       user: state.session.user.name,
-
       payMethod,
       given: Number(given || 0),
       change: 0,
       note: String(note || '').trim(),
-
-      subtotal: Number(subtotal || 0),
-      discount: Number(discount || 0),
-      total: Number(total || 0),
-
+      total,
       split: payMethod === 'mixto' ? { cash: Number(cashAmount || 0), card: Number(cardAmount || 0) } : null,
-
       lines: state.cart.lines.map(l => ({
         name: l.name,
         barcode: l.barcode || '',
@@ -1306,6 +1083,7 @@ Mantiene todo lo anterior:
     if (el.statProfit) el.statProfit.textContent = fmtEUR(r.profit);
     if (el.statMargin) el.statMargin.textContent = r.margin.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
 
+    // Tabla ventas (periodo abierto)
     const thead = el.salesTable?.querySelector('.trow.thead');
     if (thead && el.salesTable) {
       el.salesTable.innerHTML = '';
@@ -1333,7 +1111,7 @@ Mantiene todo lo anterior:
   }
 
   /* =========================
-     PRODUCTS TABLE (PRO)
+     PRODUCTS TABLE (PRO LIBRARY)
   ========================== */
   function renderProductsTable() {
     if (!el.productsTable) return;
@@ -1345,15 +1123,19 @@ Mantiene todo lo anterior:
     const qCat  = String(el.prodSearchCatSelect?.value || '').trim();
 
     let items = state.products.slice();
+
     if (qName) items = items.filter(p => (p.name || '').toLowerCase().includes(qName));
     if (qBar)  items = items.filter(p => String(p.barcode || '').includes(qBar));
     if (qCat)  items = items.filter(p => (p.category || 'Otros') === qCat);
 
+    // Orden
     items.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
     if ((state.ui.prodSort || 'az') === 'za') items.reverse();
 
+    // count
     if (el.prodCount) el.prodCount.textContent = String(items.length);
 
+    // paging
     const pageSize = Number(state.ui.prodPageSize || 50);
     const pages = Math.max(1, Math.ceil(items.length / pageSize));
     state.ui.prodPage = Math.min(Math.max(1, Number(state.ui.prodPage || 1)), pages);
@@ -1365,6 +1147,7 @@ Mantiene todo lo anterior:
     if (el.btnProdPrev) el.btnProdPrev.disabled = state.ui.prodPage <= 1;
     if (el.btnProdNext) el.btnProdNext.disabled = state.ui.prodPage >= pages;
 
+    // header row
     const thead = el.productsTable.querySelector('.trow.thead');
     el.productsTable.innerHTML = '';
     el.productsTable.appendChild(thead);
@@ -1398,10 +1181,13 @@ Mantiene todo lo anterior:
       `;
 
       const [btnEdit, btnDel] = row.querySelectorAll('button');
-      btnEdit.addEventListener('click', () => openProductModal(p, ''));
 
+      btnEdit.addEventListener('click', () => openProductModal(p, ''));
       btnDel.addEventListener('click', () => {
-        if (!adminUnlocked()) { openModal(el.modalAdmin); return toast('PIN admin requerido'); }
+        if (!adminUnlocked()) {
+          openModal(el.modalAdmin);
+          return toast('PIN admin requerido');
+        }
         if (!confirm(`¿Borrar producto "${p.name}"?`)) return;
         state.products = state.products.filter(x => x.id !== p.id);
         save();
@@ -1417,10 +1203,10 @@ Mantiene todo lo anterior:
   }
 
   /* =========================
-     BACKUP JSON
+     BACKUP / RESTORE / RESET
   ========================== */
-  function downloadFile(filename, mime, content) {
-    const blob = new Blob([content], { type: mime });
+  function downloadJSON(filename, dataObj) {
+    const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1431,12 +1217,12 @@ Mantiene todo lo anterior:
     URL.revokeObjectURL(url);
   }
 
-  function exportBackupJSON() {
+  function exportBackup() {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    downloadFile(`TPV_NADEEM_BACKUP_${stamp}.json`, 'application/json', JSON.stringify(state, null, 2));
+    downloadJSON(`TPV_NADEEM_BACKUP_${stamp}.json`, state);
   }
 
-  function importBackupJSON(file) {
+  function importBackup(file) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -1445,7 +1231,6 @@ Mantiene todo lo anterior:
         if (!state.products || !state.products.length) state.products = seedProducts();
         if (!state.categories.includes('Favoritos')) state.categories.unshift('Favoritos');
         if (!state.selectedCategory || !state.categories.includes(state.selectedCategory)) state.selectedCategory = 'Favoritos';
-        if (!state.cart.discount) state.cart.discount = { type: 'amount', value: 0 };
         save();
         renderAll();
         toast('Backup importado');
@@ -1467,208 +1252,45 @@ Mantiene todo lo anterior:
   }
 
   /* =========================
-     CSV IMPORT/EXPORT (CATALOGO)
-  ========================== */
-  function csvEscape(v) {
-    const s = String(v ?? '');
-    if (/[,"\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-    return s;
-  }
-
-  function exportCSV() {
-    const header = ['barcode','name','category','price','cost','fav'];
-    const lines = [header.join(',')];
-
-    // orden A-Z por nombre
-    const items = state.products.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'','es'));
-    for (const p of items) {
-      lines.push([
-        csvEscape(p.barcode || ''),
-        csvEscape(p.name || ''),
-        csvEscape(p.category || 'Otros'),
-        csvEscape(fmtMoney(Number(p.price || 0)).replace('.', ',')),
-        csvEscape(p.cost == null ? '' : fmtMoney(Number(p.cost)).replace('.', ',')),
-        csvEscape(p.fav ? '1' : '0')
-      ].join(','));
-    }
-
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    downloadFile(`TPV_NADEEM_CATALOGO_${stamp}.csv`, 'text/csv', lines.join('\n'));
-  }
-
-  function parseCSV(text) {
-    const rows = [];
-    let i = 0, field = '', row = [], inQuotes = false;
-
-    while (i < text.length) {
-      const c = text[i];
-
-      if (inQuotes) {
-        if (c === '"') {
-          if (text[i+1] === '"') { field += '"'; i += 2; continue; }
-          inQuotes = false; i++; continue;
-        }
-        field += c; i++; continue;
-      }
-
-      if (c === '"') { inQuotes = true; i++; continue; }
-      if (c === ',') { row.push(field); field=''; i++; continue; }
-      if (c === '\n') { row.push(field); rows.push(row); row=[]; field=''; i++; continue; }
-      if (c === '\r') { i++; continue; }
-
-      field += c; i++;
-    }
-
-    // last
-    if (field.length || row.length) { row.push(field); rows.push(row); }
-
-    return rows;
-  }
-
-  function truthy(v) {
-    const s = String(v || '').trim().toLowerCase();
-    return s === '1' || s === 'true' || s === 'yes' || s === 'y' || s === 'si' || s === 'sí';
-  }
-
-  function importCSV(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = String(reader.result || '');
-        const rows = parseCSV(text).filter(r => r.some(x => String(x||'').trim() !== ''));
-        if (!rows.length) return toast('CSV vacío');
-
-        const header = rows[0].map(h => String(h||'').trim().toLowerCase());
-        const idx = (name) => header.indexOf(name);
-
-        const iBarcode = idx('barcode');
-        const iName = idx('name');
-        const iCat = idx('category');
-        const iPrice = idx('price');
-        const iCost = idx('cost');
-        const iFav = idx('fav');
-
-        if (iName < 0 || iPrice < 0) return toast('CSV: faltan columnas (name, price)');
-
-        let added = 0, updated = 0;
-
-        for (let r = 1; r < rows.length; r++) {
-          const row = rows[r];
-          const barcode = iBarcode >= 0 ? String(row[iBarcode]||'').trim() : '';
-          const name = String(row[iName]||'').trim();
-          if (!name) continue;
-
-          const category = iCat >= 0 ? (String(row[iCat]||'').trim() || 'Otros') : 'Otros';
-          const price = parseMoney(iPrice >= 0 ? row[iPrice] : '0');
-          const costRaw = iCost >= 0 ? String(row[iCost]||'').trim() : '';
-          const cost = costRaw ? parseMoney(costRaw) : null;
-          const fav = iFav >= 0 ? truthy(row[iFav]) : false;
-
-          // crear categoría si no existe
-          if (category && category.toLowerCase() !== 'favoritos' && !state.categories.includes(category)) {
-            state.categories.push(category);
-          }
-
-          let p = null;
-          if (barcode) p = state.products.find(x => String(x.barcode||'').trim() === barcode) || null;
-
-          if (p) {
-            p.name = name;
-            p.category = category;
-            p.price = price;
-            p.cost = cost;
-            p.fav = fav;
-            updated++;
-          } else {
-            state.products.push({
-              id: 'P-' + uid(),
-              barcode,
-              name,
-              category,
-              price,
-              cost,
-              fav
-            });
-            added++;
-          }
-        }
-
-        save();
-        renderCategories();
-        renderProductsGrid();
-        renderProductsTable();
-        toast(`CSV importado: +${added} / actualizado ${updated}`);
-      } catch (e) {
-        console.warn(e);
-        toast('CSV inválido');
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  /* =========================
-     PRINT / EMAIL (Ticket PRO 80mm)
+     PRINT / EMAIL
   ========================== */
   function buildTicketHTML(s) {
-    const linesHtml = (s.lines || []).map(l => {
+    const head = `
+      <div style="text-align:center;font-weight:900;margin-bottom:4px;">${escapeHtml(state.settings.shopName)}</div>
+      <div style="text-align:center;margin-bottom:8px;">${escapeHtml(state.settings.shopSub)}</div>
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+      <div>${escapeHtml(s.ticketNo)}  ${escapeHtml(s.date)}</div>
+      <div>Caja: ${escapeHtml(s.box)}  Cajero: ${escapeHtml(s.user)}</div>
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+    `;
+
+    const body = (s.lines || []).map(l => {
       const totalLine = Number(l.price) * Number(l.qty);
       return `
-        <div class="box">
-          <div class="row">
-            <div class="left bold">${escapeHtml(l.name)}</div>
-            <div class="bold">${fmtMoney(totalLine)} €</div>
-          </div>
-          <div class="row small">
-            <div class="left">${escapeHtml(String(l.qty))} x ${fmtMoney(l.price)} €</div>
-            <div>${escapeHtml(l.barcode ? ('BC ' + l.barcode) : '')}</div>
-          </div>
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div style="max-width:58mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${escapeHtml(l.name)}</div>
+          <div style="text-align:right;">${fmtMoney(totalLine)}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <div>${l.qty} x ${fmtMoney(l.price)}</div><div></div>
         </div>
       `;
     }).join('');
 
-    const discountBlock = (s.discount && s.discount > 0.0001)
-      ? `<div class="row"><div class="bold">DESCUENTO</div><div class="bold">- ${fmtMoney(s.discount)} €</div></div>`
-      : '';
-
-    const payInfo = `
-      <div class="box">
-        <div class="row"><div class="bold">PAGO</div><div class="bold">${escapeHtml(s.payMethod)}</div></div>
-        ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div class="row"><div>Entregado</div><div>${fmtMoney(s.given || 0)} €</div></div>` : ``}
-        ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div class="row"><div>Cambio</div><div>${fmtMoney(s.change || 0)} €</div></div>` : ``}
+    const foot = `
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-weight:900;">
+        <div>TOTAL</div><div>${fmtMoney(s.total)} €</div>
       </div>
+      <div>Pago: ${escapeHtml(s.payMethod)}</div>
+      ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div>Entregado: ${fmtMoney(s.given || 0)} €</div>` : ``}
+      ${(s.payMethod === 'efectivo' || s.payMethod === 'mixto') ? `<div>Cambio: ${fmtMoney(s.change || 0)} €</div>` : ``}
+      ${s.note ? `<div>Nota: ${escapeHtml(s.note)}</div>` : ``}
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+      <div style="text-align:center;margin-top:6px;">${escapeHtml(state.settings.footerText)}</div>
+      <div style="text-align:center;margin-top:4px;">IVA incluido en los precios</div>
     `;
-
-    return `
-      <div class="p80">
-        <div class="box center">
-          <div class="bold">${escapeHtml(state.settings.shopName)}</div>
-          <div class="small">${escapeHtml(state.settings.shopSub)}</div>
-        </div>
-
-        <div class="box">
-          <div class="row"><div class="bold">${escapeHtml(s.ticketNo)}</div><div class="bold">${escapeHtml(s.date)}</div></div>
-          <div class="row small"><div>Caja: ${escapeHtml(s.box)}</div><div>Cajero: ${escapeHtml(s.user)}</div></div>
-        </div>
-
-        ${linesHtml}
-
-        <div class="totals">
-          <div class="row"><div class="bold">SUBTOTAL</div><div class="bold">${fmtMoney(s.subtotal ?? s.total)} €</div></div>
-          ${discountBlock}
-          <div class="line"></div>
-          <div class="row grand"><div class="bold">TOTAL</div><div class="bold">${fmtMoney(s.total)} €</div></div>
-          <div class="small center">IVA incluido en los precios</div>
-        </div>
-
-        ${payInfo}
-
-        ${s.note ? `<div class="box"><div class="bold">NOTA</div><div>${escapeHtml(s.note)}</div></div>` : ``}
-
-        <div class="box center">
-          <div class="bold">${escapeHtml(state.settings.footerText)}</div>
-        </div>
-      </div>
-    `;
+    return `<div>${head}${body}${foot}</div>`;
   }
 
   function printSale(sale) {
@@ -1690,8 +1312,6 @@ Mantiene todo lo anterior:
       out.push(`  ${l.qty} x ${fmtMoney(l.price)}  = ${fmtMoney(l.price * l.qty)}`);
     }
     out.push('------------------------------');
-    out.push(`SUBTOTAL: ${fmtMoney(s.subtotal ?? s.total)} €`);
-    if (s.discount && s.discount > 0) out.push(`DESCUENTO: -${fmtMoney(s.discount)} €`);
     out.push(`TOTAL: ${fmtMoney(s.total)} €`);
     out.push(`Pago: ${s.payMethod}`);
     if (s.payMethod === 'efectivo' || s.payMethod === 'mixto') {
@@ -1708,6 +1328,7 @@ Mantiene todo lo anterior:
   function sendEmailMailto() {
     const to = (el.emailTo?.value || '').trim();
     const extra = (el.emailMsg?.value || '').trim();
+
     const s = state.lastSale;
     if (!s) return toast('No hay último ticket');
 
@@ -1715,11 +1336,12 @@ Mantiene todo lo anterior:
     const body = buildReceiptText(s) + (extra ? `\n\n${extra}` : '');
     const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = url;
+
     closeModal(el.modalEmail);
   }
 
   /* =========================
-     X / Z (con arqueo)
+     X / Z REPORTS
   ========================== */
   function nextZNo() {
     const n = state.counters.zSeq || 1;
@@ -1737,16 +1359,13 @@ Mantiene todo lo anterior:
       `Caja: ${z.box}  Cajero: ${z.user}`,
       '------------------------------',
       `Tickets : ${z.tickets}`,
-      `EFECTIVO ESPERADO: ${fmtMoney(z.cash)} €`,
-      `TARJETA          : ${fmtMoney(z.card)} €`,
-      `TOTAL            : ${fmtMoney(z.total)} €`,
+      `EFECTIVO: ${fmtMoney(z.cash)} €`,
+      `TARJETA : ${fmtMoney(z.card)} €`,
+      `TOTAL   : ${fmtMoney(z.total)} €`,
       '------------------------------',
       `COSTE   : ${fmtMoney(z.cost)} €`,
       `BENEF   : ${fmtMoney(z.profit)} €`,
       `MARGEN  : ${z.margin.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`,
-      '------------------------------',
-      `ARQUEO EFECTIVO CONTADO: ${z.countedCash == null ? '-' : fmtMoney(z.countedCash) + ' €'}`,
-      `DESCUADRE (contado - esperado): ${z.diffCash == null ? '-' : (fmtMoney(z.diffCash) + ' €')}`,
       '------------------------------',
       'CIERRE Z (pone a 0)',
       'IVA incluido en precios'
@@ -1756,7 +1375,7 @@ Mantiene todo lo anterior:
   function printZ(z) {
     if (!el.printArea) return;
     const html = buildZText(z).split('\n').map(l => `<div>${escapeHtml(l)}</div>`).join('');
-    el.printArea.innerHTML = `<div class="p80"><div class="box">${html}</div></div>`;
+    el.printArea.innerHTML = `<div>${html}</div>`;
     window.print();
   }
 
@@ -1773,11 +1392,10 @@ Mantiene todo lo anterior:
     for (const z of items) {
       const div = document.createElement('div');
       div.className = 'z-item';
-      const diffTxt = (z.diffCash == null) ? '' : ` · Dif ${fmtMoney(z.diffCash)}€`;
       div.innerHTML = `
         <div>
           <div class="mono" style="font-weight:900;">${escapeHtml(z.zNo)} · ${escapeHtml(z.date)}</div>
-          <div class="muted small">Efe ${fmtMoney(z.cash)} · Tar ${fmtMoney(z.card)} · Total ${fmtMoney(z.total)} €${escapeHtml(diffTxt)}</div>
+          <div class="muted small">Efe ${fmtMoney(z.cash)} · Tar ${fmtMoney(z.card)} · Total ${fmtMoney(z.total)} €</div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-small" type="button">Imprimir</button>
@@ -1799,14 +1417,12 @@ Mantiene todo lo anterior:
       given: 0,
       change: 0,
       note: `Tickets: ${r.tickets} · Benef: ${fmtMoney(r.profit)} € · Margen: ${r.margin.toFixed(1)}%`,
-      subtotal: r.total,
-      discount: 0,
       total: r.total,
       lines: [
-        { name: 'EFECTIVO', qty: 1, price: r.cash, barcode:'', cost:null },
-        { name: 'TARJETA',  qty: 1, price: r.card, barcode:'', cost:null },
-        { name: 'COSTE',    qty: 1, price: r.cost, barcode:'', cost:null },
-        { name: 'BENEFICIO',qty: 1, price: r.profit, barcode:'', cost:null },
+        { name: 'EFECTIVO', qty: 1, price: r.cash },
+        { name: 'TARJETA',  qty: 1, price: r.card },
+        { name: 'COSTE',    qty: 1, price: r.cost },
+        { name: 'BENEFICIO',qty: 1, price: r.profit },
       ]
     };
     el.printArea.innerHTML = buildTicketHTML(x);
@@ -1814,13 +1430,6 @@ Mantiene todo lo anterior:
   }
 
   let pendingZClear = false;
-  let zExpectedCashTmp = 0;
-
-  function updateZArqueoUI() {
-    const counted = parseMoney(el.zCountedCash?.value || '');
-    const diff = counted - Number(zExpectedCashTmp || 0);
-    if (el.zDiffCash) el.zDiffCash.value = fmtMoney(diff).replace('.', ',');
-  }
 
   function openZModal() {
     if (!adminUnlocked()) {
@@ -1832,11 +1441,13 @@ Mantiene todo lo anterior:
     if (r.tickets === 0) return toast('No hay ventas para cerrar');
 
     const zNo = nextZNo();
-    const preview = { zNo, date: nowEs(), box: state.settings.boxName, user: state.session.user.name, ...r, countedCash: null, diffCash: null };
-
-    zExpectedCashTmp = Number(r.cash || 0);
-    if (el.zCountedCash) el.zCountedCash.value = '';
-    if (el.zDiffCash) el.zDiffCash.value = '0,00';
+    const preview = {
+      zNo,
+      date: nowEs(),
+      box: state.settings.boxName,
+      user: state.session.user.name,
+      ...r
+    };
 
     el.modalZ.dataset.zNo = zNo;
     el.zPreview.textContent = buildZText(preview);
@@ -1857,10 +1468,8 @@ Mantiene todo lo anterior:
     const r = calcOpenTotals();
     if (r.tickets === 0) return toast('No hay ventas');
 
-    if (state.settings.autoBackupZ) exportBackupJSON();
-
-    const counted = (String(el.zCountedCash?.value || '').trim() === '') ? null : parseMoney(el.zCountedCash.value);
-    const diff = (counted == null) ? null : (counted - Number(r.cash || 0));
+    // Auto-backup antes del Z (descarga)
+    if (state.settings.autoBackupZ) exportBackup();
 
     const zNo = el.modalZ.dataset.zNo || nextZNo();
     const z = {
@@ -1869,9 +1478,7 @@ Mantiene todo lo anterior:
       date: nowEs(),
       box: state.settings.boxName,
       user: state.session.user.name,
-      ...r,
-      countedCash: counted,
-      diffCash: diff
+      ...r
     };
 
     state.zHistory.push(z);
@@ -1881,10 +1488,15 @@ Mantiene todo lo anterior:
     closeModal(el.modalZ);
     printZ(z);
 
-    setTimeout(() => { if (pendingZClear) doZClear(); }, 5000);
+    // Fallback por si afterprint no dispara
+    setTimeout(() => {
+      if (pendingZClear) doZClear();
+    }, 5000);
   }
 
-  window.addEventListener('afterprint', () => { if (pendingZClear) doZClear(); });
+  window.addEventListener('afterprint', () => {
+    if (pendingZClear) doZClear();
+  });
 
   /* =========================
      PARKED (MULTI)
@@ -1892,7 +1504,12 @@ Mantiene todo lo anterior:
   function parkToggle() {
     if (state.cart.lines.length) {
       const name = prompt('Nombre para aparcar (opcional):', state.cart.note || '') ?? '';
-      state.parked.push({ id: uid(), name: String(name || '').trim() || `Aparcado ${state.parked.length + 1}`, ts: Date.now(), cart: JSON.parse(JSON.stringify(state.cart)) });
+      state.parked.push({
+        id: uid(),
+        name: String(name || '').trim() || `Aparcado ${state.parked.length + 1}`,
+        ts: Date.now(),
+        cart: JSON.parse(JSON.stringify(state.cart))
+      });
       cartClear();
       toast('Carrito aparcado');
     } else {
@@ -1903,7 +1520,6 @@ Mantiene todo lo anterior:
       const item = state.parked[idx];
       if (!item) return toast('No válido');
       state.cart = item.cart;
-      if (!state.cart.discount) state.cart.discount = { type:'amount', value:0 };
       state.parked.splice(idx, 1);
       save();
       renderParkBadge();
@@ -1917,48 +1533,97 @@ Mantiene todo lo anterior:
   /* =========================
      NUMPAD
   ========================== */
-function bindNumpads() {
-  // ✅ Evita doble binding (causa del "doble click")
-  if (__NUMPADS_BOUND__) return;
-  __NUMPADS_BOUND__ = true;
+  function setNumpadTarget(numpadEl, inputId) {
+    if (!numpadEl) return;
+    numpadEl.dataset.target = inputId;
+  }
 
-  // Quick numpad
-  el.numpadQuick?.addEventListener('click', (e) => {
-    const k = e.target?.dataset?.k;
-    if (!k) return;
-    if (k === 'ok') { el.btnQuickOk.click(); return; }
-    applyNumpadKey(el.numpadQuick, k);
-  });
+  function applyNumpadKey(numpadEl, key) {
+    if (!numpadEl) return;
+    const targetId = numpadEl.dataset.target;
+    const input = document.getElementById(targetId);
+    if (!input) return;
 
-  // Pay numpad
-  el.numpadPay?.addEventListener('click', (e) => {
-    const k = e.target?.dataset?.k;
-    if (!k) return;
-    if (k === 'ok') { el.btnPayOk.click(); return; }
-    applyNumpadKey(el.numpadPay, k);
-    calcPayChange();
-  });
+    const { total } = cartTotals();
 
-  // target switch on focus
-  el.payGiven?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payGiven'));
-  el.payCash?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCash'));
-  el.payCard?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCard'));
-}
+    if (key === 'ok') {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    if (key === 'back') {
+      input.value = input.value.slice(0, -1);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (key === 'clear') {
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (key === 'full') {
+      input.value = fmtMoney(total).replace('.', ',');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (key === 'plus10') {
+      const v = parseMoney(input.value || '0') + 10;
+      input.value = fmtMoney(v).replace('.', ',');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (key === ',') {
+      if (!input.value.includes(',')) input.value += ',';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (/^\d$/.test(key)) {
+      input.value += key;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function bindNumpads() {
+    // Quick numpad
+    el.numpadQuick?.addEventListener('click', (e) => {
+      const k = e.target?.dataset?.k;
+      if (!k) return;
+      if (k === 'ok') { el.btnQuickOk.click(); return; }
+      applyNumpadKey(el.numpadQuick, k);
+    });
+
+    // Pay numpad
+    el.numpadPay?.addEventListener('click', (e) => {
+      const k = e.target?.dataset?.k;
+      if (!k) return;
+      if (k === 'ok') { el.btnPayOk.click(); return; }
+      applyNumpadKey(el.numpadPay, k);
+      calcPayChange();
+    });
+
+    // target switch on focus
+    el.payGiven?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payGiven'));
+    el.payCash?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCash'));
+    el.payCard?.addEventListener('focus', () => setNumpadTarget(el.numpadPay, 'payCard'));
+  }
+
   /* =========================
-     SCAN ENGINE (GLOBAL + DOUBLE BEEP ON DUP)
+     SCAN ENGINE (GLOBAL + DEDUPE)
   ========================== */
   const scan = {
     buf: '',
     lastTs: 0,
     timer: null,
     active: false,
-    maxGap: 55,
+    maxGap: 55,   // ms
     minLen: 6,
     flushMs: 120,
   };
 
-  // Dedupe window: si mismo barcode entra 2 veces (por rebote) => doble pitido y NO añade
-  const scanDedupe = { lastCode: '', lastTime: 0, windowMs: 260 };
+  const scanDedupe = {
+    lastCode: '',
+    lastTime: 0,
+    windowMs: 280
+  };
 
   function isVentaActive() {
     return !!(el.pageVenta && el.pageVenta.classList.contains('is-active'));
@@ -1968,11 +1633,9 @@ function bindNumpads() {
     const c = String(code || '').trim();
     if (!c) return;
 
+    // Dedupe
     const t = Date.now();
     if (scanDedupe.lastCode === c && (t - scanDedupe.lastTime) < scanDedupe.windowMs) {
-      // Doble pitido = aviso de duplicado (NO añadir)
-      beep.dbl();
-      toast('⚠️ Duplicado de escaneo');
       return;
     }
     scanDedupe.lastCode = c;
@@ -1980,13 +1643,12 @@ function bindNumpads() {
 
     const p = findByBarcode(c);
     if (p) {
-      cartAddProduct(p, 1, 'scan');
+      cartAddProduct(p, 1);
       toast('Añadido');
       return;
     }
 
-    // no existe -> registrar automático
-    beep.single();
+    // No existe -> registrar automático
     if (adminUnlocked()) {
       openProductModal(null, c);
       toast('Barcode no existe: registrar');
@@ -2010,41 +1672,57 @@ function bindNumpads() {
     if (!code) return;
     if (code.length < scan.minLen) return;
 
-    if (wasActive || reason === 'enter') handleScannedCode(code);
+    // si era un burst, tratamos como scan
+    if (wasActive || reason === 'enter') {
+      handleScannedCode(code);
+    }
   }
 
   function bindGlobalScan() {
+    // Captura en fase capture para poder “comerse” teclas del lector en inputs
     document.addEventListener('keydown', (e) => {
       if (!isVentaActive()) return;
       if (anyModalOpen()) return;
 
-      // si foco en barcodeInput => su handler se encarga (evita doble)
+      // Si el foco es barcodeInput, dejamos que su handler haga lo suyo (evita duplicado)
       if (document.activeElement === el.barcodeInput) return;
 
       const key = e.key;
 
+      // Enter flush
       if (key === 'Enter') {
         if (scan.buf.length >= scan.minLen) {
-          e.preventDefault(); e.stopPropagation();
+          e.preventDefault();
+          e.stopPropagation();
           flushScan('enter');
         }
         return;
       }
 
+      // Solo caracteres típicos de lector
       const isChar = (key.length === 1) && /[0-9A-Za-z]/.test(key);
       if (!isChar) return;
 
-      const tt = performance.now();
-      const gap = tt - (scan.lastTs || 0);
-      scan.lastTs = tt;
+      const t = performance.now();
+      const gap = t - (scan.lastTs || 0);
+      scan.lastTs = t;
 
-      if (gap > scan.maxGap) { scan.buf = ''; scan.active = false; }
+      if (gap > scan.maxGap) {
+        scan.buf = '';
+        scan.active = false;
+      }
+
       scan.buf += key;
 
-      if (gap <= scan.maxGap && scan.buf.length >= 2) scan.active = true;
+      // Activamos modo “scan” si viene en ráfaga
+      if (gap <= scan.maxGap && scan.buf.length >= 2) {
+        scan.active = true;
+      }
 
+      // Si está en modo scan, prevenimos que se escriba en inputs
       if (scan.active && state.settings.aggressiveScan) {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault();
+        e.stopPropagation();
       }
 
       if (scan.timer) clearTimeout(scan.timer);
@@ -2053,80 +1731,46 @@ function bindNumpads() {
   }
 
   /* =========================
-     USERS PIN UI (Ajustes)
-  ========================== */
-  function renderUserSelect() {
-    if (!el.setUserSelect) return;
-    el.setUserSelect.innerHTML = '';
-    for (const u of state.users) {
-      const opt = document.createElement('option');
-      opt.value = u.username;
-      opt.textContent = `${u.username.toUpperCase()} (${u.role})`;
-      el.setUserSelect.appendChild(opt);
-    }
-    el.setUserSelect.value = 'cajero';
-  }
-
-  async function doSaveUserPin(username, newPin) {
-    const u = getUser(username);
-    if (!u) return toast('Usuario no existe');
-    const pin = String(newPin || '').trim();
-    if (pin.length < 4) return toast('PIN mínimo 4 dígitos');
-    u.passHash = await sha256Hex(pin);
-
-    // Si es admin, sincronizar adminPinHash
-    if (u.username === 'admin') state.settings.adminPinHash = u.passHash;
-
-    save();
-    toast('PIN guardado');
-  }
-
-  async function saveUserPinFlow() {
-    const uname = el.setUserSelect?.value || '';
-    const pin = el.setUserPin?.value || '';
-    if (!uname) return;
-    if (!pin) return toast('PIN vacío');
-
-    // Requiere admin siempre (cambiar PIN)
-    if (!requireAdminIf(true, 'SAVE_USER_PIN', { username: uname, newPin: pin }, 'PIN admin requerido para cambiar PIN')) return;
-
-    await doSaveUserPin(uname, pin);
-    el.setUserPin.value = '';
-  }
-
-  /* =========================
      UI BINDINGS
   ========================== */
   function bindUI() {
+    // clock
     if (el.clockTop) el.clockTop.textContent = nowEs();
     setInterval(() => {
       if (el.clockTop) el.clockTop.textContent = nowEs();
       if (el.ticketDate) el.ticketDate.textContent = nowEs();
     }, 15000);
 
+    // Tabs
     el.tabs.forEach(t => t.addEventListener('click', () => {
       if (state.settings.kiosk) return toast('Kiosko: navegación bloqueada');
       setTab(t.dataset.tab);
+      // refresh pages
       renderProductsTable();
       renderReports();
     }));
 
+    // Theme
     el.btnTheme?.addEventListener('click', () => setTheme(document.body.classList.contains('theme-day') ? 'night' : 'day'));
 
+    // Backdrop close
     el.backdrop?.addEventListener('click', () => {
       const open = document.querySelector('dialog[open]');
       if (open) closeModal(open);
     });
 
+    // Close buttons
     el.closeBtns.forEach(b => b.addEventListener('click', () => {
       const id = b.dataset.close;
       closeModal(document.getElementById(id));
     }));
 
+    // Login/Admin open
     el.btnLogin?.addEventListener('click', () => openModal(el.modalLogin));
     el.btnAdmin?.addEventListener('click', () => openModal(el.modalAdmin));
     el.btnAdminUnlock?.addEventListener('click', () => openModal(el.modalAdmin));
 
+    // Login submit
     el.btnLoginOk?.addEventListener('click', async () => {
       const res = await login(el.loginUser.value, el.loginPass.value);
       if (!res.ok) return toast(res.msg);
@@ -2135,16 +1779,17 @@ function bindNumpads() {
       renderHeader();
     });
 
+    // Admin pin submit
     el.btnAdminOk?.addEventListener('click', async () => {
       const pin = String(el.adminPin.value || '').trim();
       if (pin.length < 4) return toast('PIN inválido');
       if (!(await verifyAdminPin(pin))) return toast('PIN incorrecto');
-      setAdminUnlocked(state.settings.adminMinutes || 5);
+      setAdminUnlocked();
       closeModal(el.modalAdmin);
       toast(`Admin ✓ (${state.settings.adminMinutes} min)`);
     });
 
-    // Barcode input manual
+    // Barcode input manual (Enter)
     el.barcodeInput?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
@@ -2155,9 +1800,20 @@ function bindNumpads() {
       focusBarcodeSoon();
     });
 
+    // Search filter
     el.searchInput?.addEventListener('input', () => renderProductsGrid());
 
-    // Pay tabs main
+    // Keep focus reasonable
+    document.addEventListener('click', (e) => {
+      if (anyModalOpen()) return;
+      if (!isVentaActive()) return;
+      const t = e.target;
+      const tag = t?.tagName?.toLowerCase();
+      const typing = (tag === 'input' || tag === 'textarea' || tag === 'select');
+      if (!typing && tag !== 'button') focusBarcodeSoon();
+    });
+
+    // Pay tabs (main)
     el.payTabs.forEach(p => p.addEventListener('click', () => {
       el.payTabs.forEach(x => x.classList.remove('is-active'));
       p.classList.add('is-active');
@@ -2166,11 +1822,20 @@ function bindNumpads() {
       renderTicket();
     }));
 
-    // Given & Note
-    el.givenInput?.addEventListener('input', () => { state.cart.given = parseMoney(el.givenInput.value); save(); renderTicket(); });
-    el.noteName?.addEventListener('input', () => { state.cart.note = el.noteName.value || ''; save(); });
+    // Given input
+    el.givenInput?.addEventListener('input', () => {
+      state.cart.given = parseMoney(el.givenInput.value);
+      save();
+      renderTicket();
+    });
 
-    // Quick
+    // Note
+    el.noteName?.addEventListener('input', () => {
+      state.cart.note = el.noteName.value || '';
+      save();
+    });
+
+    // Open quick
     el.btnQuickAmount?.addEventListener('click', openQuickModal);
     el.btnQuickOk?.addEventListener('click', () => {
       const amt = parseMoney(el.quickAmount.value || '0');
@@ -2181,32 +1846,33 @@ function bindNumpads() {
       toast('Importe añadido');
     });
 
-    // Pay modal
+    // Open pay
     el.btnPay?.addEventListener('click', openPayModal);
     el.btnNumpadGiven?.addEventListener('click', openPayModal);
+
+    // Pay modal changes
     el.payMethod?.addEventListener('change', () => { syncPayUI(); calcPayChange(); });
     el.payGiven?.addEventListener('input', calcPayChange);
     el.payCash?.addEventListener('input', calcPayChange);
     el.payCard?.addEventListener('input', calcPayChange);
+
+    // Pay confirm
     el.btnPayOk?.addEventListener('click', confirmPay);
 
-    // Discount
-    el.btnDiscount?.addEventListener('click', openDiscountModal);
-    el.btnDiscountOk?.addEventListener('click', confirmDiscount);
-
-    // Void (perm)
+    // Void
     el.btnVoid?.addEventListener('click', () => {
       if (!state.cart.lines.length) return;
-      const need = !!state.settings.permVoid;
-      if (!requireAdminIf(need, 'VOID_TICKET', {}, 'PIN admin requerido para anular')) return;
       if (!confirm('¿Anular ticket actual?')) return;
       cartClear();
       toast('Ticket anulado');
     });
 
-    // Refund (siempre admin)
+    // Refund (simple)
     el.btnRefund?.addEventListener('click', () => {
-      if (!adminUnlocked()) { openModal(el.modalAdmin); return toast('PIN admin requerido'); }
+      if (!adminUnlocked()) {
+        openModal(el.modalAdmin);
+        return toast('PIN admin requerido');
+      }
       const s = state.lastSale;
       if (!s) return toast('No hay última venta');
       const ref = {
@@ -2216,8 +1882,6 @@ function bindNumpads() {
         date: nowEs(),
         payMethod: 'devolucion',
         total: -Math.abs(s.total),
-        subtotal: -Math.abs(s.subtotal || s.total),
-        discount: 0,
         lines: (s.lines || []).map(l => ({ ...l, qty: -Math.abs(l.qty) }))
       };
       state.salesOpen.push(ref);
@@ -2227,10 +1891,21 @@ function bindNumpads() {
       toast('Devolución registrada');
     });
 
-    // Print / email
-    el.btnPrint?.addEventListener('click', () => { if (!state.lastSale) return toast('No hay último ticket'); printSale(state.lastSale); });
-    el.btnLastTicket?.addEventListener('click', () => { if (!state.lastSale) return toast('No hay último ticket'); printSale(state.lastSale); });
-    el.btnEmailTicket?.addEventListener('click', () => { if (!state.lastSale) return toast('No hay último ticket'); openModal(el.modalEmail); });
+    // Print last
+    el.btnPrint?.addEventListener('click', () => {
+      if (!state.lastSale) return toast('No hay último ticket');
+      printSale(state.lastSale);
+    });
+    el.btnLastTicket?.addEventListener('click', () => {
+      if (!state.lastSale) return toast('No hay último ticket');
+      printSale(state.lastSale);
+    });
+
+    // Email last
+    el.btnEmailTicket?.addEventListener('click', () => {
+      if (!state.lastSale) return toast('No hay último ticket');
+      openModal(el.modalEmail);
+    });
     el.btnEmailSend?.addEventListener('click', sendEmailMailto);
 
     // Park
@@ -2285,31 +1960,53 @@ function bindNumpads() {
     el.btnProductSave?.addEventListener('click', saveProductFromModal);
 
     // Products filters & pager
-    const reRenderProducts = debounce(() => { state.ui.prodPage = 1; save(); renderProductsTable(); }, 120);
+    const reRenderProducts = debounce(() => {
+      state.ui.prodPage = 1;
+      save();
+      renderProductsTable();
+    }, 120);
+
     el.prodSearchName?.addEventListener('input', reRenderProducts);
     el.prodSearchBarcode?.addEventListener('input', reRenderProducts);
     el.prodSearchCatSelect?.addEventListener('change', reRenderProducts);
 
-    el.btnProdPrev?.addEventListener('click', () => { state.ui.prodPage = Math.max(1, Number(state.ui.prodPage || 1) - 1); save(); renderProductsTable(); });
-    el.btnProdNext?.addEventListener('click', () => { state.ui.prodPage = Number(state.ui.prodPage || 1) + 1; save(); renderProductsTable(); });
+    el.btnProdPrev?.addEventListener('click', () => {
+      state.ui.prodPage = Math.max(1, Number(state.ui.prodPage || 1) - 1);
+      save();
+      renderProductsTable();
+    });
+    el.btnProdNext?.addEventListener('click', () => {
+      state.ui.prodPage = Number(state.ui.prodPage || 1) + 1;
+      save();
+      renderProductsTable();
+    });
+    el.prodPageSize?.addEventListener('change', () => {
+      state.ui.prodPageSize = Number(el.prodPageSize.value || 50);
+      state.ui.prodPage = 1;
+      save();
+      renderProductsTable();
+    });
+    el.prodSort?.addEventListener('change', () => {
+      state.ui.prodSort = el.prodSort.value || 'az';
+      state.ui.prodPage = 1;
+      save();
+      renderProductsTable();
+    });
 
-    el.prodPageSize?.addEventListener('change', () => { state.ui.prodPageSize = Number(el.prodPageSize.value || 50); state.ui.prodPage = 1; save(); renderProductsTable(); });
-    el.prodSort?.addEventListener('change', () => { state.ui.prodSort = el.prodSort.value || 'az'; state.ui.prodPage = 1; save(); renderProductsTable(); });
-
-    // Backups JSON
-    el.btnExportBackup?.addEventListener('click', exportBackupJSON);
-    el.btnBackupNow?.addEventListener('click', exportBackupJSON);
+    // Backups
+    el.btnExportBackup?.addEventListener('click', exportBackup);
+    el.btnBackupNow?.addEventListener('click', exportBackup);
 
     el.btnImportBackup?.addEventListener('click', () => el.fileImport.click());
     el.btnRestoreNow?.addEventListener('click', () => el.fileImport.click());
-    el.fileImport?.addEventListener('change', () => { const f = el.fileImport.files?.[0]; if (f) importBackupJSON(f); el.fileImport.value=''; });
 
-    // CSV
-    el.btnExportCSV?.addEventListener('click', exportCSV);
-    el.btnImportCSV?.addEventListener('click', () => el.fileImportCSV.click());
-    el.fileImportCSV?.addEventListener('change', () => { const f = el.fileImportCSV.files?.[0]; if (f) importCSV(f); el.fileImportCSV.value=''; });
+    el.fileImport?.addEventListener('change', () => {
+      const f = el.fileImport.files?.[0];
+      if (!f) return;
+      importBackup(f);
+      el.fileImport.value = '';
+    });
 
-    // Reset
     el.btnFactoryReset?.addEventListener('click', factoryReset);
 
     // X / Z
@@ -2317,38 +2014,66 @@ function bindNumpads() {
     el.btnCloseZ?.addEventListener('click', openZModal);
     el.btnZOk?.addEventListener('click', confirmZ);
 
-    // Z arqueo live calc
-    el.zCountedCash?.addEventListener('input', updateZArqueoUI);
-
     // Settings
-    el.setShopName?.addEventListener('input', debounce(() => { state.settings.shopName = el.setShopName.value || state.settings.shopName; save(); renderHeader(); }, 120));
-    el.setShopSub?.addEventListener('input', debounce(() => { state.settings.shopSub = el.setShopSub.value || state.settings.shopSub; save(); renderHeader(); }, 120));
-    el.setBoxName?.addEventListener('input', debounce(() => { state.settings.boxName = el.setBoxName.value || state.settings.boxName; save(); renderHeader(); }, 120));
-    el.setFooterText?.addEventListener('input', debounce(() => { state.settings.footerText = el.setFooterText.value || state.settings.footerText; save(); }, 120));
+    el.setShopName?.addEventListener('input', debounce(() => {
+      state.settings.shopName = el.setShopName.value || state.settings.shopName;
+      save();
+      renderHeader();
+    }, 120));
 
-    el.setAutoPrint?.addEventListener('change', () => { state.settings.autoPrint = (el.setAutoPrint.value === '1'); save(); toast('Guardado'); });
-    el.setAggressiveScan?.addEventListener('change', () => { state.settings.aggressiveScan = (el.setAggressiveScan.value === '1'); save(); toast('Guardado'); });
-    el.setAutoBackupZ?.addEventListener('change', () => { state.settings.autoBackupZ = (el.setAutoBackupZ.value === '1'); save(); toast('Guardado'); });
-    el.setKiosk?.addEventListener('change', () => { state.settings.kiosk = (el.setKiosk.value === '1'); save(); applyKioskUI(); toast('Guardado'); });
-    el.setAdminMinutes?.addEventListener('change', () => { state.settings.adminMinutes = Number(el.setAdminMinutes.value || 5); save(); toast('Guardado'); });
+    el.setShopSub?.addEventListener('input', debounce(() => {
+      state.settings.shopSub = el.setShopSub.value || state.settings.shopSub;
+      save();
+      renderHeader();
+    }, 120));
 
-    // Perm settings
-    el.setPermDeleteLine?.addEventListener('change', () => { state.settings.permDeleteLine = (el.setPermDeleteLine.value === '1'); save(); toast('Guardado'); });
-    el.setPermVoid?.addEventListener('change', () => { state.settings.permVoid = (el.setPermVoid.value === '1'); save(); toast('Guardado'); });
-    el.setPermDiscount?.addEventListener('change', () => { state.settings.permDiscount = (el.setPermDiscount.value === '1'); save(); toast('Guardado'); });
-    el.setPermPriceEdit?.addEventListener('change', () => { state.settings.permPriceEdit = (el.setPermPriceEdit.value === '1'); save(); toast('Guardado'); });
+    el.setBoxName?.addEventListener('input', debounce(() => {
+      state.settings.boxName = el.setBoxName.value || state.settings.boxName;
+      save();
+      renderHeader();
+    }, 120));
 
-    // Admin pin (sync with user admin)
+    el.setFooterText?.addEventListener('input', debounce(() => {
+      state.settings.footerText = el.setFooterText.value || state.settings.footerText;
+      save();
+    }, 120));
+
+    el.setAutoPrint?.addEventListener('change', () => {
+      state.settings.autoPrint = (el.setAutoPrint.value === '1');
+      save();
+      toast('Guardado');
+    });
+
+    el.setAggressiveScan?.addEventListener('change', () => {
+      state.settings.aggressiveScan = (el.setAggressiveScan.value === '1');
+      save();
+      toast('Guardado');
+    });
+
+    el.setAutoBackupZ?.addEventListener('change', () => {
+      state.settings.autoBackupZ = (el.setAutoBackupZ.value === '1');
+      save();
+      toast('Guardado');
+    });
+
+    el.setKiosk?.addEventListener('change', () => {
+      state.settings.kiosk = (el.setKiosk.value === '1');
+      save();
+      applyKioskUI();
+      toast('Guardado');
+    });
+
+    el.setAdminMinutes?.addEventListener('change', () => {
+      state.settings.adminMinutes = Number(el.setAdminMinutes.value || 5);
+      save();
+      toast('Guardado');
+    });
+
     el.setAdminPin?.addEventListener('change', async () => {
       const pin = String(el.setAdminPin.value || '').trim();
       if (!pin) return;
       if (pin.length < 4) return toast('PIN mínimo 4 dígitos');
-
-      const h = await sha256Hex(pin);
-      state.settings.adminPinHash = h;
-      const adminUser = getUser('admin');
-      if (adminUser) adminUser.passHash = h;
-
+      state.settings.adminPinHash = await sha256Hex(pin);
       el.setAdminPin.value = '';
       save();
       toast('PIN Admin actualizado');
@@ -2359,30 +2084,27 @@ function bindNumpads() {
     el.btnExitKiosk?.addEventListener('click', exitKiosk);
     el.btnExitKiosk2?.addEventListener('click', exitKiosk);
 
-    // Users pin save
-    el.btnUserPinSave?.addEventListener('click', saveUserPinFlow);
-
     // Shortcuts
     window.addEventListener('keydown', (e) => {
       const tag = e.target?.tagName?.toLowerCase();
       const typing = (tag === 'input' || tag === 'textarea' || tag === 'select');
 
       if (e.key === 'F2') { e.preventDefault(); openQuickModal(); return; }
-      if (e.key === 'F3') { e.preventDefault(); openDiscountModal(); return; }
       if (e.key === 'F4') { e.preventDefault(); openPayModal(); return; }
 
       if (e.key === 'Escape') {
         const open = document.querySelector('dialog[open]');
         if (open) { e.preventDefault(); closeModal(open); return; }
-        if (!typing && state.cart.lines.length) { if (confirm('¿Limpiar ticket actual?')) cartClear(); }
+        if (!typing && state.cart.lines.length) {
+          if (confirm('¿Limpiar ticket actual?')) cartClear();
+        }
         return;
       }
 
       if ((e.key === 'Delete' || e.key === 'Supr') && !typing) {
         if (!state.cart.lines.length) return;
         e.preventDefault();
-        const idx = state.cart.lines.length - 1;
-        requestDeleteLine(idx);
+        cartRemove(state.cart.lines.length - 1);
         return;
       }
 
@@ -2406,22 +2128,16 @@ function bindNumpads() {
      RENDER ALL
   ========================== */
   function renderAll() {
-    // Settings UI
+    // Fill settings UI
     if (el.setShopName) el.setShopName.value = state.settings.shopName;
     if (el.setShopSub) el.setShopSub.value = state.settings.shopSub;
     if (el.setBoxName) el.setBoxName.value = state.settings.boxName;
     if (el.setFooterText) el.setFooterText.value = state.settings.footerText;
-
     if (el.setAutoPrint) el.setAutoPrint.value = state.settings.autoPrint ? '1' : '0';
     if (el.setAggressiveScan) el.setAggressiveScan.value = state.settings.aggressiveScan ? '1' : '0';
     if (el.setAutoBackupZ) el.setAutoBackupZ.value = state.settings.autoBackupZ ? '1' : '0';
     if (el.setKiosk) el.setKiosk.value = state.settings.kiosk ? '1' : '0';
     if (el.setAdminMinutes) el.setAdminMinutes.value = String(state.settings.adminMinutes || 5);
-
-    if (el.setPermDeleteLine) el.setPermDeleteLine.value = state.settings.permDeleteLine ? '1' : '0';
-    if (el.setPermVoid) el.setPermVoid.value = state.settings.permVoid ? '1' : '0';
-    if (el.setPermDiscount) el.setPermDiscount.value = state.settings.permDiscount ? '1' : '0';
-    if (el.setPermPriceEdit) el.setPermPriceEdit.value = state.settings.permPriceEdit ? '1' : '0';
 
     if (el.prodPageSize) el.prodPageSize.value = String(state.ui.prodPageSize || 50);
     if (el.prodSort) el.prodSort.value = state.ui.prodSort || 'az';
@@ -2430,10 +2146,6 @@ function bindNumpads() {
     if (!state.categories.includes('Favoritos')) state.categories.unshift('Favoritos');
     if (!state.selectedCategory || !state.categories.includes(state.selectedCategory)) state.selectedCategory = 'Favoritos';
 
-    // Ensure discount
-    if (!state.cart.discount) state.cart.discount = { type: 'amount', value: 0 };
-
-    renderUserSelect();
     renderHeader();
     renderCategories();
     renderProductsGrid();
